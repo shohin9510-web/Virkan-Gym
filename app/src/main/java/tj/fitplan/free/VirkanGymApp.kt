@@ -69,7 +69,6 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 private val Gold = Color(0xFFFFB72B)
-import androidx.compose.material3.darkColorScheme
     private val VirkanColors = darkColorScheme(
     primary = Gold,
     onPrimary = Color(0xFF171006),
