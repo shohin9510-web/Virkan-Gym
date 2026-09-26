@@ -40,7 +40,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -70,7 +69,7 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 private val Gold = Color(0xFFFFB72B)
-private val VirkanColors: DarkColorScheme = darkColorScheme(
+private val VirkanColors = darkColorScheme(
     primary = Gold,
     onPrimary = Color(0xFF171006),
     secondary = Color(0xFFFFD67A),
