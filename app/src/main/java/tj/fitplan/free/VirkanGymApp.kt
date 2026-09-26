@@ -28,7 +28,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DarkColorScheme
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -69,7 +69,8 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 private val Gold = Color(0xFFFFB72B)
-private val VirkanColors = darkColorScheme(
+import androidx.compose.material3.darkColorScheme
+    private val VirkanColors = darkColorScheme(
     primary = Gold,
     onPrimary = Color(0xFF171006),
     secondary = Color(0xFFFFD67A),
@@ -77,7 +78,7 @@ private val VirkanColors = darkColorScheme(
     surface = Color(0xFF171B22),
     surfaceVariant = Color(0xFF222832),
     onBackground = Color(0xFFF4F6FA),
-    onSurface = Color(0xFFF4F6FA),
+    onSurface = Color(0xFFE4E6EA),
     onSurfaceVariant = Color(0xFFABB3BF)
 )
 
