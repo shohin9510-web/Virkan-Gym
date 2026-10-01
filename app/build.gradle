@@ -1,0 +1,49 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'tj.virkan.gym'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+    defaultConfig {
+        // Separate from the old native tj.fitplan.free app: no destructive overwrite.
+        applicationId 'tj.virkan.gym'
+        minSdk 26
+        targetSdk 35
+        versionCode 19
+        versionName '1.9.0'
+    }
+    buildFeatures { buildConfig true }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    def keyPath = System.getenv('VIRKAN_KEYSTORE_PATH')
+    signingConfigs {
+        if (keyPath) {
+            provided {
+                storeFile file(keyPath)
+                storePassword System.getenv('VIRKAN_STORE_PASSWORD')
+                keyAlias System.getenv('VIRKAN_KEY_ALIAS')
+                keyPassword System.getenv('VIRKAN_KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        debug { if (keyPath) signingConfig signingConfigs.provided }
+        release {
+            minifyEnabled false
+            if (keyPath) signingConfig signingConfigs.provided
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    sourceSets.main.assets.srcDir(layout.buildDirectory.dir('generated/virkanAssets'))
+    lint { abortOnError true; checkReleaseBuilds true }
+}
+
+def copyWeb = tasks.register('copyWebAssets', Sync) {
+    from(rootProject.file('web')) { into 'web' }
+    into(layout.buildDirectory.dir('generated/virkanAssets'))
+}
+tasks.named('preBuild').configure { dependsOn(copyWeb) }
+
+dependencies { implementation 'androidx.webkit:webkit:1.12.1' }

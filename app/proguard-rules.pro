@@ -1,1 +1,4 @@
-# Virkan Gym currently does not require custom ProGuard rules.
+# Keep this rule if minification is enabled later.
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
