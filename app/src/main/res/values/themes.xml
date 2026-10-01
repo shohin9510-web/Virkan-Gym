@@ -2,7 +2,8 @@
     <style name="Theme.VirkanGym" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowLightNavigationBar">false</item>
+        <!-- Dark navigation uses the platform default light icons.
+             windowLightNavigationBar is API 27+, but minSdk is 26. -->
         <item name="android:statusBarColor">#0F1115</item>
         <item name="android:navigationBarColor">#0F1115</item>
         <item name="android:windowBackground">#0F1115</item>
