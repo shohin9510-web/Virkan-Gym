@@ -1,0 +1,17 @@
+.gradle/
+.gradle-dist/
+**/build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+*.apk
+*.aab
+*.jks
+*.keystore
+keystore.properties
+*.log
+__pycache__/
+node_modules/
+# Downloaded and checksum-verified on first wrapper launch.
+gradle/wrapper/gradle-wrapper.jar
