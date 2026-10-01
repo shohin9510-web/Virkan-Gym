@@ -1,0 +1,18 @@
+name: Build Virkan Gym v1.9
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify v1.9 source is present
+        run: test -f web/app.js && test -f app/src/main/java/tj/virkan/gym/MainActivity.java
