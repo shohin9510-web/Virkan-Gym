@@ -1,0 +1,39 @@
+name: Prepare Virkan v2 exercise cards
+on:
+  workflow_dispatch:
+  push:
+    branches: ['build/virkan-gym-v2.0']
+    paths:
+      - 'scripts/collect-cards.py'
+      - '.github/workflows/prepare-v20-cards.yml'
+permissions:
+  contents: write
+jobs:
+  cards:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Collect reference photos
+        run: python3 scripts/collect-cards.py
+      - name: Commit only review assets to the build branch
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/build/virkan-gym-v2.0'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add web/cards web/cards-meta.json web/IMAGE_CREDITS.txt
+          if ! git diff --cached --quiet; then
+            git commit -m 'Add individually mapped source photos with provenance for review'
+            git push origin HEAD:refs/heads/build/virkan-gym-v2.0
+          fi
+      - name: Downloadable review package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Virkan-v20-photo-review
+          path: |
+            web/cards/
+            web/cards-meta.json
+            qa/cards/
+          retention-days: 14
+          if-no-files-found: error
