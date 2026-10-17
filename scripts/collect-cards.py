@@ -27,7 +27,7 @@ MAP={
  'lat_close':['Close-Grip_Front_Lat_Pulldown'],
  'row':['Seated_Cable_Rows'],
  'one_arm_row':['One-Arm_Dumbbell_Row'],
- 'supported_row':['Incline_Dumbbell_Row'],
+ 'supported_row':['Dumbbell_Incline_Row'],
  'straight_pull':['Straight-Arm_Pulldown'],
  'bent_row':['Bent_Over_Barbell_Row'],
  'barbell_curl':['EZ-Bar_Curl'],

@@ -425,6 +425,25 @@
     ],
     "sourceRevision": "f00c92c7dcf1216a928a52c3706c7ce8e2f71ed5"
   },
+  "supported_row": {
+    "sourceId": "Dumbbell_Incline_Row",
+    "sourceName": "Dumbbell Incline Row",
+    "files": [
+      "cards/supported_row_0.jpg",
+      "cards/supported_row_1.jpg"
+    ],
+    "sha256": [
+      "6bdf4dd4c46fd9d50abe73802d49c87f3714dfd05774595e902a5b1765b45d46",
+      "8c0cc8f09e194825429a0e7b6c96d9a2a85a5ac6005cf25d31ab65b04adfe739"
+    ],
+    "instructions": [
+      "Using a neutral grip, lean into an incline bench.",
+      "Take a dumbbell in each hand with a neutral grip, beginning with the arms straight. This will be your starting position.",
+      "Retract the shoulder blades and flex the elbows to row the dumbbells to your side.",
+      "Pause at the top of the motion, and then return to the starting position."
+    ],
+    "sourceRevision": "f00c92c7dcf1216a928a52c3706c7ce8e2f71ed5"
+  },
   "straight_pull": {
     "sourceId": "Straight-Arm_Pulldown",
     "sourceName": "Straight-Arm Pulldown",

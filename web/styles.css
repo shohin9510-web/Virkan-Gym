@@ -171,3 +171,7 @@ dialog{padding:20px;width:calc(100% - 24px);max-width:500px;max-height:88dvh;ove
 /* Keep the native status/navigation bar outside the WebView content. */
 .native-app .app{margin-top:0;border-radius:0;min-height:100dvh}
 .native-app .bottom{bottom:0;border-radius:0}
+
+/* V2.0 exercise references: images stay off the set-entry grid. */
+.guide-link{display:block;border:1px solid #365378;background:#162437;color:#bfd6fa;border-radius:10px;padding:7px 10px;margin:8px 0;font:inherit;font-size:12px;cursor:pointer}
+.guide-photos{display:grid;grid-template-columns:1fr 1fr;gap:10px;background:white;padding:10px;border-radius:12px;color:#101a2a}.guide-photos figure{margin:0;min-width:0}.guide-photos img{width:100%;height:auto;object-fit:contain;display:block}.guide-photos figcaption{text-align:center;font-weight:700;font-size:12px;padding:7px}.guide-cue{font-weight:700;line-height:1.5}.atlas-list{display:grid;gap:10px}.atlas-card{display:flex;align-items:center;text-align:left;gap:12px;border:1px solid #303b4d;background:#171d27;color:inherit;padding:10px;border-radius:14px;font:inherit;cursor:pointer}.atlas-card img{width:100px;max-height:80px;object-fit:contain;background:white;border-radius:8px}.atlas-card small{display:block;color:#9baac0;font-size:12px;padding-top:5px}#homePool{font-size:19px}#editorCycles{flex-wrap:wrap}#poolTab{margin-bottom:18px}button:focus-visible{outline:2px solid #ffb72b;outline-offset:3px}
