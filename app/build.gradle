@@ -9,8 +9,8 @@ android {
         applicationId 'tj.virkan.gym'
         minSdk 26
         targetSdk 35
-        versionCode 19
-        versionName '1.9.0'
+        versionCode 20
+        versionName '2.0.0'
     }
     buildFeatures { buildConfig true }
     compileOptions {
@@ -29,7 +29,7 @@ android {
         }
     }
     buildTypes {
-        debug { if (keyPath) signingConfig signingConfigs.provided }
+        debug { applicationIdSuffix '.preview20'; if (keyPath) signingConfig signingConfigs.provided }
         release {
             minifyEnabled false
             if (keyPath) signingConfig signingConfigs.provided

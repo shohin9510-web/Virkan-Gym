@@ -24,7 +24,7 @@ class Parser(HTMLParser):
 p=Parser();p.feed((root/'web/index.html').read_text())
 for ref in p.refs: assert (root/'web'/ref).is_file(), 'Missing web asset: '+ref
 js=(root/'web/app.js').read_text()
-assert "const VERSION=19" in js
+assert "const VERSION=20" in js
 assert "'virkan_gym_html_state'" in js
 assert 'function savePermanentProgram(' in js
 assert 'baseReps' in js and 'repStep' in js

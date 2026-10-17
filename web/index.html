@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Virkan Gym — v1.9</title>
+<title>Virkan Gym — v2.0</title>
 <meta name="theme-color" content="#0f1115">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <link rel="icon" type="image/png" href="icons/icon-64.png">
@@ -12,15 +12,15 @@
 </head>
 <body>
 <div class="app">
-<header class="top"><div class="brand"><div class="brand-left"><div class="logo"><img src="icons/icon-192.png" alt="Virkan Gym"></div><div><div class="title">Virkan Gym</div><div class="sub">v1.9 · офлайн</div></div></div><button class="pill" onclick="go('settings')">Настройки</button></div></header>
+<header class="top"><div class="brand"><div class="brand-left"><div class="logo"><img src="icons/icon-192.png" alt="Virkan Gym"></div><div><div class="title">Virkan Gym</div><div class="sub">v2.0 · офлайн</div></div></div><button class="pill" onclick="go('settings')">Настройки</button></div></header>
 <div id="storageWarning" class="storage-warning" role="alert" hidden></div>
 <main class="content">
 <section id="home" class="screen active">
  <div class="hero"><div class="row"><span class="badge info">Сегодня</span><span id="todayDate" class="muted small"></span></div><h2 id="todayWorkout">Тренировка</h2><p id="todayMeta"></p><button class="big-action" id="startBtn" onclick="openToday()">НАЧАТЬ ТРЕНИРОВКУ</button></div>
- <div class="grid"><div class="card"><h3>Неделя программы</h3><div class="metric" id="homeWeek">1</div><div class="muted small">Индивидуальный шаг весов</div></div><div class="card"><h3>Бассейн на неделю</h3><div class="metric" id="homePool">200 м</div><div class="muted small">Длина бассейна — 50 м</div></div></div>
+ <div class="grid"><div class="card"><h3>Неделя цикла</h3><div class="metric" id="homeWeek">1</div><div class="muted small">Индивидуальный шаг весов</div></div><div class="card"><h3>Бассейн сегодня</h3><div class="metric" id="homePool">Не выполнено</div><div class="muted small">После всех упражнений</div></div></div>
  <p class="notice spaced" id="homeProfileNote"></p>
  <h3 class="section-title">Ваш план</h3><div class="item" id="homeStructure"></div>
- <h3 class="section-title">Рабочие веса</h3><div class="notice">Для каждого упражнения — своя прибавка. Например, тяга верхнего блока: <b>+5 кг в неделю</b>. Базу, шаг тренажёра и отдых можно задать в отдельном разделе настроек.</div><button class="btn secondary full spaced" onclick="go('bases')">Открыть базовые веса</button>
+ <h3 class="section-title">Рабочие веса</h3><div class="notice">Для каждого упражнения — своя прибавка. Например, тяга верхнего блока: <b>+5 кг в неделю</b>. Базу и шаг тренажёра можно задать в отдельном разделе настроек.</div><button class="btn secondary full spaced" onclick="go('bases')">Открыть базовые веса</button>
  <p class="note">Программа рассчитывает план, а не обязательную нагрузку. Фактический вес можно изменить в строке подхода, не меняя базу.</p>
 </section>
 <section id="plan" class="screen">
@@ -35,11 +35,10 @@
   <div id="previewNote" class="notice" hidden></div><div class="button-row"><button class="text-button" id="moveWorkout">Перенести тренировку</button></div>
   <div id="setStatus" class="set-status" aria-live="polite"></div><p class="workout-hint">После «Выполнено» подход исчезнет и перейдёт в прогресс. Таймер появится на время отдыха, затем снова скроется.</p>
   <div id="absStartList"></div>
-  <div class="tabs spaced"><button id="gymTabBtn" data-tab="gym" onclick="switchWorkout('gym')">Силовая</button><button id="cardioTabBtn" data-tab="cardio" onclick="switchWorkout('cardio')">Кардио</button><button id="poolTabBtn" data-tab="pool" onclick="switchWorkout('pool')">Бассейн</button></div>
+
   <div id="gymTab"><div id="exerciseList"></div></div>
-  <div id="cardioTab" hidden><div class="card"><h3>Кардио</h3><div class="form-row"><label for="cardioKm">Дистанция, км<input id="cardioKm" class="input" type="text" inputmode="decimal" placeholder="Не задана" oninput="activityInput('cardio','distance',this.value)"></label><label for="cardioMin">Время, мин<input id="cardioMin" class="input" type="text" inputmode="decimal" placeholder="Не задано" oninput="activityInput('cardio','minutes',this.value)"></label></div><button id="cardioSave" class="btn full spaced" onclick="saveActivity('cardio')">Сохранить кардио</button><p id="cardioSaved" class="saved-note"></p></div></div>
-  <div id="poolTab" hidden><div class="card"><h3>Бассейн</h3><div class="metric" id="poolDistance">200 м</div><p class="pool-laps" id="poolLaps"></p><p class="note">Первая неделя — 200 м, далее +50 м каждую неделю. Стиль — произвольный. Сохраняется плановая дистанция и введённое время.</p><label for="poolMin">Время плавания, мин<input id="poolMin" class="input" type="text" inputmode="decimal" placeholder="Не задано" oninput="activityInput('pool','minutes',this.value)"></label><button id="poolSave" class="btn full spaced" onclick="saveActivity('pool')">Сохранить бассейн</button><p id="poolSaved" class="saved-note"></p></div></div>
-  <div id="absEndList" class="spaced"></div><p id="finishState" class="finish-state"></p><button id="finishBtn" class="big-action" onclick="finishWorkout()">ЗАВЕРШИТЬ ТРЕНИРОВКУ</button>
+  <div id="cardioTab" hidden><div class="card"><h3 id="cardioTypeTitle">Кардио</h3><button class="guide-link" id="cardioGuide">Фото выполнения</button><div class="form-row"><label for="cardioKm">Дистанция, км<input id="cardioKm" class="input" type="text" inputmode="decimal" placeholder="Не задана" oninput="activityInput('cardio','distance',this.value)"></label><label for="cardioMin">Время, мин<input id="cardioMin" class="input" type="text" inputmode="decimal" placeholder="Не задано" oninput="activityInput('cardio','minutes',this.value)"></label></div><button id="cardioSave" class="btn full spaced" onclick="saveActivity('cardio')">Сохранить кардио</button><p id="cardioSaved" class="saved-note"></p></div></div>
+  <div id="absEndList" class="spaced"></div><div id="poolTab" class="spaced" hidden><div class="card"><span class="eyebrow">ПОСЛЕ ВСЕХ УПРАЖНЕНИЙ</span><h3>Бассейн</h3><div class="metric" id="poolState">Не выполнено</div><p class="note">Без дистанции и обязательной продолжительности. Завершайте плавание с запасом сил.</p><button id="poolSave" class="btn full spaced" onclick="togglePool()">✓ Выполнено</button></div></div><p id="finishState" class="finish-state"></p><button id="finishBtn" class="big-action" onclick="finishWorkout()">ЗАВЕРШИТЬ ТРЕНИРОВКУ</button>
  </div>
 </section>
 <section id="progress" class="screen">
@@ -54,8 +53,9 @@
   <button class="settings-link" onclick="go('profileSettings')"><span><b>Профиль</b><small id="profileSummary"></small></span><span class="chevron">›</span></button>
   <button class="settings-link" onclick="go('bases')"><span><b>Базовые веса всех упражнений</b><small id="basesSummary"></small></span><span class="chevron">›</span></button>
   <button class="settings-link" onclick="go('programEditor')"><span><b>Редактор постоянной программы</b><small id="editorSummary">Дни, упражнения, порядок и подходы</small></span><span class="chevron">›</span></button>
-  <button class="settings-link" onclick="go('programSettings')"><span><b>Начало программы и бассейн</b><small id="programSummary"></small></span><span class="chevron">›</span></button>
-  <button class="settings-link" onclick="go('timerSettings')"><span><b>Таймер отдыха</b><small id="timerSummary"></small></span><span class="chevron">›</span></button>
+  <button class="settings-link" onclick="go('programSettings')"><span><b>Начало программы</b><small id="programSummary"></small></span><span class="chevron">›</span></button>
+
+  <button class="settings-link" onclick="go('atlas')"><span><b>Карточки упражнений</b><small>Отдельные фотографии двух положений</small></span><span>›</span></button>
   <button class="settings-link" onclick="go('backup')"><span><b>Резервная копия и восстановление</b><small id="backupSummary"></small></span><span class="chevron">›</span></button>
  </div><div class="notice spaced">Данные хранятся локально. Android и браузер используют отдельные хранилища: переносите результаты через JSON. Перед удалением приложения или обновлением с переустановкой сохраните резервную копию.</div>
 </section>
@@ -72,33 +72,34 @@
 <section id="programEditor" class="screen">
  <button class="back-button" onclick="go('settings')">‹ Настройки</button>
  <span class="eyebrow">ВАША НЕДЕЛЯ</span><h2>Редактор постоянной программы</h2>
- <p class="note">Настройте дни, состав и порядок упражнений. Пресс остаётся первым и последним. Изменения относятся к будущим тренировкам, а не к архиву.</p>
+ <p class="note">Настройте дни, состав и порядок упражнений. Пресс настраивается отдельно для каждой недели и дня. Бассейн всегда после зала. Изменения относятся к будущим тренировкам, а не к архиву.</p>
  <div class="card"><label class="field-label" for="editorFrom">Применять начиная с даты</label><input id="editorFrom" class="input" type="date" onchange="editorDateChanged()"><p class="note">По умолчанию — следующий понедельник. Можно выбрать сегодня. Начатые, завершённые и перенесённые тренировки не переписываются.</p><button class="text-button" onclick="loadEditorForDate()">Загрузить программу для этой даты</button></div>
- <div id="editorDays" class="editor-days" aria-label="Дни программы"></div><div id="editorDayBody"></div>
+ <div id="editorCycles" class="button-row spaced"></div><div id="editorDays" class="editor-days" aria-label="Дни программы"></div><div id="editorDayBody"></div>
  <p class="notice spaced">Повторения пресса с недельной прибавкой задаются в «Базовые веса всех упражнений → Пресс». Здесь меняется число подходов и повторения для режима с дополнительным весом.</p>
  <p id="editorError" class="form-error" role="alert"></p><p id="editorSaved" class="saved-note" aria-live="polite"></p>
  <button class="big-action" onclick="savePermanentProgram()">СОХРАНИТЬ ПОСТОЯННУЮ ПРОГРАММУ</button>
- <button class="text-button inset" onclick="resetEditorDraft()">Вернуть исходное расписание в редактор</button>
+ <button class="text-button inset" onclick="resetEditorDraft()">Загрузить новый трёхнедельный план</button>
 </section>
 <section id="programSettings" class="screen">
- <button class="back-button" onclick="go('settings')">‹ Настройки</button><h2>Программа</h2><div class="card"><label class="field-label" for="startDateInput">Дата начала первой недели</label><input id="startDateInput" type="date" class="input" onchange="markDirty()"><p class="note">Первая неделя начинается с этой даты. Каждые следующие 7 календарных дней прибавляется индивидуальный шаг веса и 50 м бассейна. Пропуски сами по себе не останавливают расчёт.</p><p id="programDetails" class="saved-note"></p></div>
- <h3 class="section-title">Бассейн</h3><div class="card"><div class="row"><span>Длина</span><b>50 м</b></div><div class="row spaced"><span>Базовая дистанция</span><b>200 м</b></div><div class="row spaced"><span>Прибавка за неделю</span><b>+50 м</b></div><p class="note">Произвольный стиль — без выбора в тренировке.</p></div><button class="big-action" onclick="saveProgram()">СОХРАНИТЬ ДАТУ</button>
+ <button class="back-button" onclick="go('settings')">‹ Настройки</button><h2>Программа</h2><div class="card"><label class="field-label" for="startDateInput">Дата начала первой недели</label><input id="startDateInput" type="date" class="input" onchange="markDirty()"><p class="note">Эта дата задаёт начало расчёта нагрузки и исходного трёхнедельного цикла. Каждые следующие 7 календарных дней прибавляется индивидуальный шаг веса . Пропуски сами по себе не останавливают расчёт.</p><p id="programDetails" class="saved-note"></p></div>
+ <p class="notice">Бассейн всегда последний: только «Выполнено / Не выполнено». Отдых после подходов фиксирован: 90 секунд.</p><button class="big-action" onclick="saveProgram()">СОХРАНИТЬ ДАТУ</button>
 </section>
-<section id="timerSettings" class="screen">
- <button class="back-button" onclick="go('settings')">‹ Настройки</button><h2>Таймер отдыха</h2><div class="notice">Выполненный подход → таймер появился → время истекло → таймер исчез. Следующий выполненный подход запускает новый полный отсчёт.</div><div class="card spaced"><label class="field-label" for="restSeconds">Обычный отдых, сек</label><input id="restSeconds" class="input" type="number" min="5" max="900" step="1" oninput="markDirty()"><p class="note">Индивидуальный отдых задаётся рядом с базовым весом упражнения. Пустое поле использует это общее время.</p><label class="toggle-row"><input id="soundToggle" type="checkbox" onchange="markDirty()"><span>Звуковой сигнал</span></label><label class="toggle-row"><input id="vibrationToggle" type="checkbox" onchange="markDirty()"><span>Вибрация, если поддерживается</span></label></div><p class="note">Сигнал работает при открытом приложении. При сворачивании или блокировке телефона он может задерживаться. После возвращения оставшееся время пересчитывается. Системный фоновый будильник в этой сборке не реализован.</p><button class="big-action" onclick="saveTimerSettings()">СОХРАНИТЬ ТАЙМЕР</button>
-</section>
+
 <section id="backup" class="screen">
  <button class="back-button" onclick="go('settings')">‹ Настройки</button><h2>Резервная копия</h2><div class="card"><h3>Сейчас в приложении</h3><p id="backupCounts"></p><p id="lastBackup" class="note"></p></div><div class="list spaced"><button class="btn" onclick="exportData()">Сохранить данные в JSON</button><button class="btn secondary" onclick="document.getElementById('importDataFile').click()">Выбрать JSON для восстановления</button><input id="importDataFile" type="file" accept=".json,application/json" hidden onchange="importData(event)"><button id="restoreSnapshot" class="btn secondary" hidden onclick="restoreSnapshot()">Вернуть данные до последней замены</button></div><p class="notice spaced">Сначала появится предварительный просмотр копии. Данные заменяются только после вашего подтверждения. Перед заменой создаётся защитная копия в локальном хранилище.</p><p class="note">Защитная копия не заменяет отдельный JSON-файл. Удаление приложения или очистка его данных удаляет и локальные копии. Для переноса между телефоном и браузером используйте JSON. Данные не отправляются на сервер.</p><button class="btn danger full spaced" onclick="resetAll()">Сбросить данные этой версии</button>
 </section>
+<section id="atlas" class="screen"><button class="back-button" onclick="go('settings')">‹ Настройки</button><h2>Карточки упражнений</h2><p class="note">Нажмите карточку, чтобы увидеть два положения. Это справочные фотографии, не персональный инструктаж.</p><input id="atlasSearch" class="input" placeholder="Поиск упражнения или группы" oninput="renderAtlas()"><div id="atlasList" class="atlas-list spaced"></div></section>
 </main>
 <nav class="bottom" aria-label="Основные разделы">
  <button class="nav active" data-screen="home" onclick="go('home')"><span class="ico">⌂</span>Сегодня</button><button class="nav" data-screen="plan" onclick="go('plan')"><span class="ico">▦</span>План</button><button class="nav" data-screen="workout" onclick="go('workout')"><span class="ico">●</span>Тренировка</button><button class="nav" data-screen="progress" onclick="go('progress')"><span class="ico">↗</span>Прогресс</button><button class="nav" data-screen="settings" onclick="go('settings')"><span class="ico">⚙</span>Настройки</button>
 </nav></div>
-<aside id="restBar" class="rest-bar" aria-label="Таймер отдыха" hidden><div class="rest-main"><div><span class="eyebrow">ОТДЫХ</span><strong id="timerTime">01:30</strong></div><div class="rest-controls"><button id="timerPause" onclick="toggleTimer()">Пауза</button><button onclick="extendTimer()">+30 сек</button><button onclick="skipTimer()" aria-label="Закончить отдых и скрыть таймер">Пропустить</button></div></div></aside>
+<aside id="restBar" class="rest-bar" aria-label="Таймер отдыха" hidden><div class="rest-main"><div><span class="eyebrow">ОТДЫХ</span><strong id="timerTime">01:30</strong></div><div class="rest-controls"><button id="timerPause" onclick="toggleTimer()">Пауза</button><button onclick="skipTimer()" aria-label="Закончить отдых и скрыть таймер">Пропустить</button></div></div></aside>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <dialog id="dialog"><div class="dialog-head"><h2 id="dialogTitle"></h2><button class="icon-button" onclick="closeDialog()" aria-label="Закрыть окно">×</button></div><div id="dialogBody"></div></dialog>
 
 <script src="platform.js"></script>
+<script src="cycle-data.js"></script>
+<script src="cards-index.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
