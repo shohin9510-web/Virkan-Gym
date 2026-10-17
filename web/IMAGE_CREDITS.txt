@@ -1,0 +1,4 @@
+Exercise reference photos: yuhonas/free-exercise-db, public-domain dataset under The Unlicense as declared by its maintainer. Original dataset: wrkout/exercises.json.
+Source: https://github.com/yuhonas/free-exercise-db
+Pinned revision: f00c92c7dcf1216a928a52c3706c7ce8e2f71ed5
+Photos are references, not individually validated medical or coaching advice. Generated collage posters are NOT used in the app.
