@@ -1,17 +1,17 @@
-name: Build Virkan Gym 2.0 APK
+name: Build Virkan Gym 2.2 APK
 on:
   workflow_dispatch:
   push:
-    branches: ['build/virkan-gym-v2.0']
-    paths-ignore: ['.bootstrap-v20/part*.b64']
+    branches: ['build/virkan-gym-v2.2']
+    paths-ignore: ['.bootstrap-v22/part*.b64']
 permissions:
   contents: read
 concurrency:
-  group: virkan-v20-${{ github.ref }}
+  group: virkan-v22-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   prepare:
-    name: Prepare verified v2 source
+    name: Prepare verified v2.2 source
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     permissions:
@@ -20,33 +20,26 @@ jobs:
       source_sha: ${{ steps.source.outputs.sha }}
     steps:
       - uses: actions/checkout@v6
-      - name: Apply checksum-verified upgrade once
+      - name: Apply verified source update once
         id: source
         run: |
           set -euo pipefail
-          test "$GITHUB_REF" = 'refs/heads/build/virkan-gym-v2.0'
-          if [ -f .bootstrap-v20/apply.py ]; then
-            python3 .bootstrap-v20/apply.py
+          test "$GITHUB_REF" = 'refs/heads/build/virkan-gym-v2.2'
+          if [ -f .bootstrap-v22/apply.py ]; then
+            python3 .bootstrap-v22/apply.py
             python3 scripts/check-project.py
             node --check web/app.js
+            node --check web/notifications.js
             node --test tests/logic.test.cjs
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
             git add --all
-            git commit -m 'Apply tested Virkan Gym 2.0: cycles, fixed rest, pool flag and photo guide'
-            git push origin HEAD:refs/heads/build/virkan-gym-v2.0
+            git commit -m 'Import verified Virkan Gym 2.2 readable sources and native reminder controls'
+            git push origin HEAD:refs/heads/build/virkan-gym-v2.2
           fi
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - name: Diagnostics if preparation fails
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Virkan-v20-preparation-diagnostics
-          path: .bootstrap-v20/
-          include-hidden-files: true
-          retention-days: 2
   build:
-    name: Compile and verify v2 APK
+    name: Compile and verify v2.2 APK
     needs: prepare
     runs-on: ubuntu-22.04
     timeout-minutes: 30
@@ -57,14 +50,11 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.source_sha }}
           persist-credentials: false
-      - name: Structure and 57 logic checks
+      - name: Structure and logic tests
         run: |
           python3 scripts/check-project.py
-          node --check web/app.js
-          node --check web/platform.js
-          node --check web/cycle-data.js
-          node --check web/cards-index.js
-          node --test tests/logic.test.cjs
+          for f in web/app.js web/platform.js web/cycle-data.js web/document-data.js web/notifications.js; do node --check "$f"; done
+          node --test tests/logic.test.cjs | tee logic-tests.txt
       - name: Java 17
         uses: actions/setup-java@v5
         with:
@@ -100,36 +90,37 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist source-dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Virkan-Gym-2.0.0-preview.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Virkan-Gym-2.2.0-preview.apk
           git rev-parse HEAD > dist/SOURCE_COMMIT.txt
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/Virkan-Gym-2.0.0-preview.apk > dist/SIGNATURE.txt
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/Virkan-Gym-2.0.0-preview.apk > dist/APK_INFO.txt
-          grep "name='tj.virkan.gym.preview20'" dist/APK_INFO.txt
-          (cd dist && sha256sum Virkan-Gym-2.0.0-preview.apk > SHA256SUMS.txt)
-          cp docs/УСТАНОВКА_2_0.md dist/INSTALL_RU.md
-          git archive --format=zip --output=source-dist/Virkan-Gym-2.0.0-source.zip HEAD
-          echo '### Virkan Gym 2.0 preview APK' >> "$GITHUB_STEP_SUMMARY"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/Virkan-Gym-2.2.0-preview.apk > dist/SIGNATURE.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/Virkan-Gym-2.2.0-preview.apk > dist/APK_INFO.txt
+          grep "name='tj.virkan.gym.preview22'" dist/APK_INFO.txt
+          (cd dist && sha256sum Virkan-Gym-2.2.0-preview.apk > SHA256SUMS.txt)
+          cp docs/CHANGELOG_2_2_RU.md dist/INSTALL_RU.md
+          git archive --format=zip --output=source-dist/Virkan-Gym-2.2.0-source.zip HEAD
+          echo '### Virkan Gym 2.2 preview APK' >> "$GITHUB_STEP_SUMMARY"
           echo "Source: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
-          echo 'Side-by-side package: tj.virkan.gym.preview20. Preserve the older app and transfer data using JSON. To apply the new default cycle after importing, load it in the permanent editor and save an effective date.' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Compilation, lint, 57 logic checks and signature verification passed. Physical phone testing is still required.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Side-by-side package: tj.virkan.gym.preview22. Export JSON before migration; preserve the older app. Reminders are off until configured. Test installation, permission and actual delivery on a physical phone.' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
-          name: Virkan-Gym-v2.0.0-preview
+          name: Virkan-Gym-v2.2.0-preview
           path: dist/
           if-no-files-found: error
           retention-days: 30
       - uses: actions/upload-artifact@v4
         with:
-          name: Virkan-Gym-v2.0.0-source
+          name: Virkan-Gym-v2.2.0-source
           path: source-dist/
           if-no-files-found: error
           retention-days: 30
-      - name: Lint reports
+      - name: Lint and logic reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Virkan-Gym-v2.0-lint
-          path: app/build/reports/
+          name: Virkan-Gym-v2.2-reports
+          path: |
+            app/build/reports/
+            logic-tests.txt
           if-no-files-found: ignore
           retention-days: 14
       - name: Remove temporary signing material
