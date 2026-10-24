@@ -9,8 +9,8 @@ android {
         applicationId 'tj.virkan.gym'
         minSdk 26
         targetSdk 35
-        versionCode 20
-        versionName '2.0.0'
+        versionCode 22
+        versionName '2.2.0'
     }
     buildFeatures { buildConfig true }
     compileOptions {
@@ -29,7 +29,7 @@ android {
         }
     }
     buildTypes {
-        debug { applicationIdSuffix '.preview20'; if (keyPath) signingConfig signingConfigs.provided }
+        debug { applicationIdSuffix '.preview22'; if (keyPath) signingConfig signingConfigs.provided }
         release {
             minifyEnabled false
             if (keyPath) signingConfig signingConfigs.provided
@@ -46,4 +46,4 @@ def copyWeb = tasks.register('copyWebAssets', Sync) {
 }
 tasks.named('preBuild').configure { dependsOn(copyWeb) }
 
-dependencies { implementation 'androidx.webkit:webkit:1.12.1' }
+dependencies { implementation 'androidx.webkit:webkit:1.12.2' }

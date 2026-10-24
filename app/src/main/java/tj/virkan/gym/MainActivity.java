@@ -59,6 +59,7 @@ public final class MainActivity extends Activity {
     private ValueCallback<Uri[]> fileCallback;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private boolean pageReady;
+    private String pendingTrainingDate;
     private boolean exportPending;
     private Boolean exportResult;
     private File pendingFile;
@@ -67,6 +68,8 @@ public final class MainActivity extends Activity {
     @SuppressLint("SetJavaScriptEnabled") // Only our packaged UI; all external URLs/frames are denied.
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        pendingTrainingDate=getIntent().getStringExtra("trainingDate");
+        ReminderScheduler.channels(this);
         pendingFile = new File(getCacheDir(), "pending-export.json");
         exportPending = savedInstanceState != null && savedInstanceState.getBoolean("exportPending");
 
@@ -133,6 +136,7 @@ public final class MainActivity extends Activity {
                 pageReady = HOME.equals(url.split("#", 2)[0]);
                 if (!pageReady) return;
                 deliverExportResult();
+                openPendingTraining();
                 web.evaluateJavascript("typeof HTMLDialogElement!=='undefined' && " +
                         "typeof HTMLDialogElement.prototype.showModal==='function'", result -> {
                     if ("false".equals(result) && !isFinishing()) {
@@ -220,6 +224,13 @@ public final class MainActivity extends Activity {
 
     /** The only native operation exposed to our local top-level document is JSON export. */
     public final class ExportBridge {
+ @JavascriptInterface public void syncReminders(String json){ReminderScheduler.update(MainActivity.this,json);}
+ @JavascriptInterface public String getReminderStatus(){return ReminderScheduler.status(MainActivity.this);}
+ @JavascriptInterface public void requestReminderPermission(){runOnUiThread(()->{if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},103);});}
+ @JavascriptInterface public void openReminderSettings(){runOnUiThread(()->{try{startActivity(new Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,getPackageName()));}catch(ActivityNotFoundException e){message("Настройки недоступны.");}});}
+ @JavascriptInterface public void requestExactReminderPermission(){runOnUiThread(()->{if(Build.VERSION.SDK_INT>=31&&!ReminderScheduler.exactAllowed(MainActivity.this)){try{startActivity(new Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+getPackageName())));}catch(ActivityNotFoundException e){message("Используется обычное время напоминаний.");}}else message("Точное время доступно.");});}
+ @JavascriptInterface public void testReminder(){runOnUiThread(()->{if(!ReminderScheduler.allowed(MainActivity.this)){requestReminderPermission();message("Разрешите уведомления и повторите проверку.");return;}ReminderScheduler.test(MainActivity.this);});}
+
         @JavascriptInterface
         public void saveBackup(String json, String filename) {
             if (json == null || json.length() > MAX_JSON_BYTES) {
@@ -337,12 +348,16 @@ public final class MainActivity extends Activity {
         });
     }
 
+    private void openPendingTraining(){if(!pageReady||web==null||pendingTrainingDate==null)return;String d=pendingTrainingDate;pendingTrainingDate=null;if(d.matches("\\d{4}-\\d{2}-\\d{2}"))web.evaluateJavascript("window.virkanOpenDate && window.virkanOpenDate("+JSONObject.quote(d)+")",null);}
+    @Override protected void onNewIntent(Intent i){super.onNewIntent(i);setIntent(i);pendingTrainingDate=i.getStringExtra("trainingDate");openPendingTraining();}
+    @Override public void onRequestPermissionsResult(int req,String[] p,int[] res){super.onRequestPermissionsResult(req,p,res);if(req==103){ReminderScheduler.schedule(this);if(web!=null)web.evaluateJavascript("window.virkanOnResume && window.virkanOnResume()",null);}}
     @Override protected void onSaveInstanceState(Bundle out) {
         out.putBoolean("exportPending", exportPending);
         super.onSaveInstanceState(out);
     }
     @Override protected void onResume() {
         super.onResume();
+        ReminderScheduler.schedule(this);
         if (web != null) {
             web.onResume();
             web.evaluateJavascript("window.virkanOnResume && window.virkanOnResume()", null);

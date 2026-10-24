@@ -1,7 +1,8 @@
 
 'use strict';
 /* Virkan Gym 1.9: local-only data, stable sessions, configurable progression. */
-const VERSION=20, KEY='virkan_gym_html_state', SNAPSHOT_KEY='virkan_gym_before_restore';
+const APP_VERSION='2.2.0';
+const VERSION=22, KEY='virkan_gym_html_state', SNAPSHOT_KEY='virkan_gym_before_restore';
 const $=id=>document.getElementById(id), copy=v=>JSON.parse(JSON.stringify(v));
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const num=v=>String(v??'').trim()===''?NaN:Number(String(v).trim().replace(/[\s\u00a0\u202f]/g,'').replace(',','.'));
@@ -14,25 +15,26 @@ function shiftDate(s,n){const d=dateObj(s);d.setDate(d.getDate()+n);return local
 function monday(s=localISO()){return shiftDate(s,-((dateObj(s).getDay()+6)%7));}
 function dateLabel(s,long=false){return dateObj(s).toLocaleDateString('ru-RU',{day:'numeric',month:long?'long':'short',...(long?{year:'numeric'}:{})});}
 function timeLabel(s){return s&&Number.isFinite(Date.parse(s))?new Date(s).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}):'Из прежней версии';}
-const EQUIPMENT={extra:'Дополнительный вес, без массы тела',barbell:'Штанга: общий вес с грифом',dumbbell:'Гантели: вес одной гантели',machine:'Тренажёр: вес на шкале',bodyweight:'Без дополнительного веса'};
+const EQUIPMENT={single_dumbbell:'Одна гантель в двух руках',crossover:'Кроссовер: вес на одном блоке',extra:'Дополнительный вес, без массы тела',barbell:'Штанга: общий вес с грифом',dumbbell:'Гантели: вес одной гантели',machine:'Тренажёр: вес на шкале',bodyweight:'Без дополнительного веса'};
 const CATALOG=V20_CATALOG, ABS=V20_ABS, ALL_EXERCISES=[...CATALOG,...ABS];
 const REGISTRY=Object.fromEntries(ALL_EXERCISES.map(e=>[e.id,e]));
 const PLAN=v20DefaultCycles()[0];
 const DAY_NAMES=['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
 function defaultConfig(e){
- if(e.lockedBodyweight)return {base:0,mode:'bodyweight',step:2.5,equipment:'bodyweight',rest:null};
- if(e.kind==='abs')return {base:0,mode:'reps',step:2.5,equipment:'bodyweight',rest:null,baseReps:e.id==='dead_bug'?8:12,repStep:1};
- return {base:null,mode:'weighted',step:e.step,equipment:e.equipment,rest:null};
+ const row=DOC_PLAN.weights.find(w=>w.id===e.id);
+ const cfg={base:row?row.base:null,mode:row?.bodyweight||e.lockedBodyweight||e.kind==='abs'?'bodyweight':'weighted',step:row?.step??null,equipment:row?.bodyweight||e.lockedBodyweight||e.kind==='abs'?'bodyweight':e.equipment,rest:null};
+ if(e.id==='cable_fly')cfg.equipment='crossover';if(e.id==='triceps_overhead')cfg.equipment='single_dumbbell';if(e.kind==='abs'){cfg.baseReps=null;cfg.repStep=null;}
+ return cfg;
 }
 function defaultProgram(){return copy(v20DefaultCycles()[0]);}
-function initialState(){return {schemaVersion:VERSION,profile:{height:null,weight:null,goal:null,confirmed:false,onboardingSeen:false},startDate:monday(),exerciseSettings:Object.fromEntries(ALL_EXERCISES.map(e=>[e.id,defaultConfig(e)])),programVersions:[{id:'default',effectiveFrom:'1900-01-01',savedAt:null,days:defaultProgram(),cycles:v20DefaultCycles(),anchorDate:null}],rest:{seconds:90,sound:false,vibration:false},timer:{active:false,endAt:null,remaining:0,sessionId:null},sessions:{},weights:[],legacyHistory:[],backup:{lastExportAt:null},revision:0};}
+function initialState(){return {schemaVersion:VERSION,notifications:defaultNotifications(),profile:{height:null,weight:null,goal:null,confirmed:false,onboardingSeen:false},startDate:DOC_PLAN.startDate,documentSelections:{},exerciseSettings:Object.fromEntries(ALL_EXERCISES.map(e=>[e.id,defaultConfig(e)])),programVersions:[{id:'default',effectiveFrom:'1900-01-01',savedAt:null,days:defaultProgram(),cycles:v20DefaultCycles(),anchorDate:null}],rest:{seconds:90,sound:true,vibration:false},timer:{active:false,endAt:null,remaining:0,sessionId:null},sessions:{},weights:[],legacyHistory:[],backup:{lastExportAt:null},revision:0};}
 function programRevision(date,store){const rev=[...store.programVersions].reverse().find(v=>v.effectiveFrom<=date)||store.programVersions[0];const anchor=rev.anchorDate||store.startDate;const index=Math.max(0,Math.floor((dayNum(date)-dayNum(anchor))/7))%3;return {...rev,cycleIndex:index,days:rev.cycles?rev.cycles[index]:rev.days};}
 function newSet(n,reps){return {number:n,weight:null,reps:String(reps),repsManual:false,overrideId:null,done:false,result:null};}
 function newSession(date,store){
  const rev=store?programRevision(date,store):{days:defaultProgram(),cycleIndex:0,id:'default'},dow=dateObj(date).getDay(),p=rev.days[dow];
- const core=p.items.map(([id,n,r])=>({slot:id,exerciseId:id,reps:r,skipped:false,sets:Array.from({length:n},(_,i)=>newSet(i+1,r))}));
- const abs=(start)=>{const slot=start?'abs_start':'abs_end',id=p[start?'absStartExercise':'absEndExercise']||slot,n=p[start?'absStartSets':'absEndSets'],r=p[start?'absStartReps':'absEndReps'];return {slot,exerciseId:id,reps:r,skipped:false,sets:Array.from({length:n},(_,i)=>newSet(i+1,r))};};
- return {id:'s_'+date,originalDate:date,scheduledDate:date,dow,title:p.title,tabs:[...p.tabs],cycleIndex:rev.cycleIndex,cardioType:p.cardioType||'treadmill',templateRevision:rev.id,manualEdits:false,exercises:!p.tabs.length?[]:p.includeAbs===false?core:[abs(true),...core,abs(false)],activities:{},activityDrafts:{},finishedAt:null,status:'planned'};
+ const core=p.items.map(([id,n,r],pos)=>({slot:p.items.slice(0,pos).some(x=>x[0]===id)?id+'__'+pos:id,exerciseId:id,unit:p.itemUnits?.[pos]||REGISTRY[id]?.unit||'reps',sourceCount:n,sourceReps:r,reps:r,skipped:false,sets:REGISTRY[id]?.unresolved?[]:Array.from({length:n},(_,i)=>newSet(i+1,r))}));
+ const abs=(start)=>{const slot=start?'abs_start':'abs_end',id=p[start?'absStartExercise':'absEndExercise']||slot,n=p[start?'absStartSets':'absEndSets'],r=p[start?'absStartReps':'absEndReps'];return {slot,exerciseId:id,unit:REGISTRY[id]?.unit||'reps',sourceCount:n,sourceReps:r,reps:r,skipped:false,sets:REGISTRY[id]?.unresolved?[]:Array.from({length:n},(_,i)=>newSet(i+1,r))};};
+ return {docIssues:[...(p.docIssues||[])],documentPlan:!!p.documentPlan,id:'s_'+date,originalDate:date,scheduledDate:date,dow,title:p.title,tabs:[...p.tabs],cycleIndex:rev.cycleIndex,cardioType:p.cardioType||'treadmill',templateRevision:rev.id,manualEdits:false,exercises:!p.tabs.length?[]:p.includeAbs===false?core:[abs(true),...core,abs(false)],activities:{},activityDrafts:{},finishedAt:null,status:'planned'};
 }
 function normalizeProgramDays(days){
  if(!days||typeof days!=='object')throw Error('В копии нет полного недельного расписания.');
@@ -40,11 +42,11 @@ function normalizeProgramDays(days){
  for(const d of [0,1,2,3,4,5,6]){
   const p=days[d];if(!p||!Array.isArray(p.tabs)||p.tabs.some(t=>!['gym','cardio','pool'].includes(t))||!Array.isArray(p.items)||p.items.length>30)throw Error('Некорректный день программы.');
   const isTraining=p.tabs.length>0,seen=new Set();
-  const items=p.items.map(a=>{if(!Array.isArray(a)||a.length!==3||!CATALOG.some(e=>e.id===a[0])||seen.has(a[0])||!Number.isInteger(a[1])||a[1]<1||a[1]>20||!Number.isInteger(a[2])||a[2]<1||a[2]>500)throw Error('Проверьте упражнения, подходы и повторения в программе.');seen.add(a[0]);return [a[0],a[1],a[2]];});
+  const items=p.items.map(a=>{if(!Array.isArray(a)||a.length!==3||!CATALOG.some(e=>e.id===a[0])||!Number.isInteger(a[1])||a[1]<1||a[1]>20||!Number.isInteger(a[2])||a[2]<1||a[2]>500)throw Error('Проверьте упражнения, подходы и повторения в программе.');seen.add(a[0]);return [a[0],a[1],a[2]];});
   const abs={};for(const [k,def,max] of [['absStartSets',3,20],['absEndSets',3,20],['absStartReps',20,500],['absEndReps',15,500]]){const n=p[k]??def;if(!Number.isInteger(n)||n<1||n>max)throw Error('Неверные параметры пресса в программе.');abs[k]=n;}
   const tabs=isTraining?[...(items.length||!p.tabs.some(t=>t==='cardio'||t==='pool')?['gym']:[]),...['cardio','pool'].filter(t=>p.tabs.includes(t))]:[];
   if(p.absStartExercise&&!ABS.some(e=>e.id===p.absStartExercise)||p.absEndExercise&&!ABS.some(e=>e.id===p.absEndExercise))throw Error('Неверное упражнение на пресс.');
-  out[d]={title:isTraining?String(p.title||'Тренировка').trim().slice(0,100):'Отдых',tabs,items:isTraining?items:[],...abs,includeAbs:p.includeAbs!==false,absStartExercise:p.absStartExercise||'abs_start',absEndExercise:p.absEndExercise||'abs_end',cardioType:Object.hasOwn(V20_CARDIO,p.cardioType)?p.cardioType:'treadmill'};
+  out[d]={documentPlan:!!p.documentPlan,docIssues:Array.isArray(p.docIssues)?p.docIssues.filter(x=>Object.hasOwn(DOC_ISSUES,x)):[],itemUnits:Array.isArray(p.itemUnits)?p.itemUnits.map(x=>x==='seconds'?'seconds':'reps'):[],title:isTraining?String(p.title||'Тренировка').trim().slice(0,100):'Отдых',tabs,items:isTraining?items:[],...abs,includeAbs:p.includeAbs!==false,absStartExercise:p.absStartExercise||'abs_start',absEndExercise:p.absEndExercise||'abs_end',cardioType:Object.hasOwn(V20_CARDIO,p.cardioType)?p.cardioType:'treadmill'};
  }
  return out;
 }
@@ -59,8 +61,8 @@ function nullableNum(v,lo=0,hi=5000){if(v==null||v==='')return null;const n=num(
 function normalize(raw){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw Error('Неверный формат данных.');
  if(Number(raw.schemaVersion)>VERSION)throw Error('Эта копия из более новой версии приложения.');
- if(![18,19,VERSION].includes(Number(raw.schemaVersion)))return migrateLegacy(raw);
- const v=initialState();v.programVersions=normalizeProgramVersions(raw.programVersions);
+ if(![18,19,20,21,VERSION].includes(Number(raw.schemaVersion)))return migrateLegacy(raw);
+ const v=initialState();v.notifications=normalizeNotifications(raw.notifications);v.documentSelections=cleanDocumentSelections(raw.documentSelections||{});v.programVersions=normalizeProgramVersions(raw.programVersions);
  if(!validDate(raw.startDate))throw Error('Неверная дата начала программы.');v.startDate=raw.startDate;
  v.profile={height:profileNumber(raw.profile?.height,50,260),weight:profileNumber(raw.profile?.weight,20,400),goal:profileNumber(raw.profile?.goal,20,400),confirmed:false,onboardingSeen:Boolean(raw.profile?.onboardingSeen)};
  v.profile.confirmed=Boolean(raw.profile?.confirmed)&&['height','weight','goal'].every(k=>v.profile[k]!=null);
@@ -68,25 +70,25 @@ function normalize(raw){
   const c=raw.exerciseSettings?.[e.id];if(!c)continue;const def=defaultConfig(e),step=nullableNum(c.step,0.01,100),isAbs=e.kind==='abs';
   const mode=isAbs&&c.mode==='reps'?'reps':c.mode==='bodyweight'?'bodyweight':'weighted';
   const eq=isAbs?(mode==='weighted'?'extra':'bodyweight'):(Object.hasOwn(EQUIPMENT,c.equipment)?c.equipment:e.equipment);
-  v.exerciseSettings[e.id]={base:nullableNum(c.base),step:step??def.step,mode,equipment:eq,rest:null};
+  v.exerciseSettings[e.id]={base:nullableNum(c.base),step:step,mode,equipment:eq,rest:null};
   if(isAbs){const b=nullableNum(c.baseReps,1,500),r=nullableNum(c.repStep,0,100);if((b!=null&&!Number.isInteger(b))||(r!=null&&!Number.isInteger(r)))throw Error('Повторения пресса должны быть целыми.');v.exerciseSettings[e.id].baseReps=b??def.baseReps;v.exerciseSettings[e.id].repStep=r??def.repStep;}
  }
- const sec=nullableNum(raw.rest?.seconds,5,900);v.rest.seconds=90;v.rest.sound=!!raw.rest?.sound;v.rest.vibration=!!raw.rest?.vibration;
+ const sec=nullableNum(raw.rest?.seconds,5,900);v.rest.seconds=90;v.rest.sound=raw.rest?.sound!==false;v.rest.vibration=!!raw.rest?.vibration;
  if(Array.isArray(raw.weights))v.weights=raw.weights.filter(x=>x&&profileNumber(x.v,20,400)!=null).map(x=>({date:validDate(x.date)?x.date:null,label:String(x.label||x.date||'').slice(0,100),v:Number(x.v)}));
  const entries=Object.entries(raw.sessions||{});if(entries.length>10000)throw Error('Слишком много тренировок в копии.');
  for(const [id,s] of entries){
   if(!s||id!=='s_'+s.originalDate||!validDate(s.originalDate)||!validDate(s.scheduledDate))throw Error('Некорректные даты тренировки в копии.');
-  const t=newSession(s.originalDate,v);t.templateRevision=String(s.templateRevision||"legacy").slice(0,80);t.manualEdits=!!s.manualEdits;t.cycleIndex=Number.isInteger(s.cycleIndex)?s.cycleIndex:t.cycleIndex;t.cardioType=Object.hasOwn(V20_CARDIO,s.cardioType)?s.cardioType:t.cardioType;t.scheduledDate=s.scheduledDate;t.title=String(s.title||t.title).slice(0,160);t.status=['planned','started','done','partial'].includes(s.status)?s.status:'planned';t.finishedAt=typeof s.finishedAt==='string'&&Number.isFinite(Date.parse(s.finishedAt))?s.finishedAt:null;
+  const t=newSession(s.originalDate,v);t.docIssues=Array.isArray(s.docIssues)?s.docIssues.filter(x=>Object.hasOwn(DOC_ISSUES,x)):[];t.documentPlan=!!s.documentPlan;t.templateRevision=String(s.templateRevision||"legacy").slice(0,80);t.manualEdits=!!s.manualEdits;t.cycleIndex=Number.isInteger(s.cycleIndex)?s.cycleIndex:t.cycleIndex;t.cardioType=Object.hasOwn(V20_CARDIO,s.cardioType)?s.cardioType:t.cardioType;t.scheduledDate=s.scheduledDate;t.title=String(s.title||t.title).slice(0,160);t.status=['planned','started','done','partial'].includes(s.status)?s.status:'planned';t.finishedAt=typeof s.finishedAt==='string'&&Number.isFinite(Date.parse(s.finishedAt))?s.finishedAt:null;
   t.tabs=Array.isArray(s.tabs)?s.tabs.filter(x=>['gym','cardio','pool'].includes(x)):t.tabs;
   if(!Array.isArray(s.exercises)||s.exercises.length>80)throw Error('Неверный список упражнений.');
   const slots=new Set();t.exercises=[];
   for(const ex of s.exercises){
-   if(!REGISTRY[ex.exerciseId]||!REGISTRY[ex.slot]||slots.has(ex.slot)||!Array.isArray(ex.sets)||ex.sets.length>20)throw Error('Неизвестное или повторное упражнение.');slots.add(ex.slot);
-   const te={slot:ex.slot,exerciseId:ex.exerciseId,reps:Number.isInteger(ex.reps)&&ex.reps>0&&ex.reps<=500?ex.reps:10,skipped:!!ex.skipped,sets:[]};
+   if(!REGISTRY[ex.exerciseId]||!(REGISTRY[ex.slot]||REGISTRY[String(ex.slot).replace(/__\d+$/,'')])||slots.has(ex.slot)||!Array.isArray(ex.sets)||ex.sets.length>20)throw Error('Неизвестное или повторное упражнение.');slots.add(ex.slot);
+   const te={unit:ex.unit==='seconds'?'seconds':'reps',sourceCount:Number.isInteger(ex.sourceCount)?ex.sourceCount:null,sourceReps:Number.isInteger(ex.sourceReps)?ex.sourceReps:null,slot:ex.slot,exerciseId:ex.exerciseId,reps:Number.isInteger(ex.reps)&&ex.reps>0&&ex.reps<=500?ex.reps:10,skipped:!!ex.skipped,sets:[]};
    for(let i=0;i<ex.sets.length;i++){
     const z=ex.sets[i];if(z.number!==i+1)throw Error('Неверная нумерация подходов.');
     const r=newSet(i+1,te.reps);r.weight=z.weight==null?null:String(z.weight).slice(0,24);r.reps=z.reps==null?String(te.reps):String(z.reps).slice(0,24);r.overrideId=REGISTRY[z.overrideId]?z.overrideId:null;r.repsManual=Number(raw.schemaVersion)===18?true:!!z.repsManual;
-    if(z.done){const a=z.result;if(!a||!REGISTRY[a.exerciseId]||!validDate(a.date))throw Error('Неверная запись выполненного подхода.');const weight=nullableNum(a.weight),reps=nullableNum(a.reps,1,500);if(reps!=null&&!Number.isInteger(reps))throw Error('Повторения должны быть целыми.');r.done=true;r.result={exerciseId:a.exerciseId,name:String(a.name||REGISTRY[a.exerciseId].name).slice(0,160),kind:REGISTRY[a.exerciseId].kind,weight,reps,date:a.date,completedAt:typeof a.completedAt==='string'&&Number.isFinite(Date.parse(a.completedAt))?a.completedAt:null,migrated:!!a.migrated,equipment:EQUIPMENT[a.equipment]?a.equipment:null};}
+    if(z.done){const a=z.result;if(!a||!REGISTRY[a.exerciseId]||!validDate(a.date))throw Error('Неверная запись выполненного подхода.');const weight=nullableNum(a.weight),reps=nullableNum(a.reps,1,500);if(reps!=null&&!Number.isInteger(reps))throw Error('Повторения должны быть целыми.');r.done=true;r.result={exerciseId:a.exerciseId,name:String(a.name||REGISTRY[a.exerciseId].name).slice(0,160),kind:REGISTRY[a.exerciseId].kind,unit:a.unit==='seconds'?'seconds':'reps',weight,reps,date:a.date,completedAt:typeof a.completedAt==='string'&&Number.isFinite(Date.parse(a.completedAt))?a.completedAt:null,migrated:!!a.migrated,equipment:EQUIPMENT[a.equipment]?a.equipment:null};}
     te.sets.push(r);
    }t.exercises.push(te);
   }
@@ -115,6 +117,61 @@ function migrateLegacy(raw){
  if(Array.isArray(raw.weights))v.weights=raw.weights.filter(w=>profileNumber(w?.v,20,400)!=null).map(w=>({date:validDate(w.d)?w.d:null,label:String(w.d||''),v:Number(w.v)}));
  return v;
 }
+const DOC_ISSUES={
+ mon_pool:'Понедельник: сводная таблица — без бассейна; описание дня — с бассейном. Выбор не сделан.',
+ thu_abs:'Четверг: сводная таблица включает пресс в начале и конце; описание дня исключает. Выбор не сделан.',
+ thu_pool:'Четверг: сводная таблица включает бассейн; описание дня исключает. Выбор не сделан.',
+ tue_plan:'Вторник подтверждён: шея + трапеция. Состав, подходы и нагрузки нужно задать в редакторе; они не назначены автоматически.'
+};
+function cleanDocumentSelections(input){
+ const src=input&&typeof input==='object'?input:{},out={};
+ for(const k of ['monPool','thuPool','thuAbs'])if(['yes','no'].includes(src[k]))out[k]=src[k];
+ if(['rest','reserved'].includes(src.tuesday))out.tuesday=src.tuesday;
+ for(const e of DOC_PLAN.pending){const id=src[e.id];if(typeof id==='string'&&REGISTRY[id]&&!REGISTRY[id].unresolved&&(e.kind==='abs'?REGISTRY[id].kind==='abs':REGISTRY[id].kind!=='abs'))out[e.id]=id;}
+ if(out.doc_sat_end3){const n=Number(src.satEndCount);if(Number.isInteger(n)&&n>=1&&n<=500)out.satEndCount=n;else delete out.doc_sat_end3;}
+ if(out.doc_trap){const n=Number(src.trapCount);if(Number.isInteger(n)&&n>=1&&n<=500&&['reps','seconds'].includes(src.trapUnit)){out.trapCount=n;out.trapUnit=src.trapUnit;}else delete out.doc_trap;}
+ return out;
+}
+function pendingDocumentCount(s){return (s?.docIssues?.length||0)+(s?.exercises?.filter(e=>REGISTRY[e.exerciseId]?.unresolved&&!e.skipped).length||0);}
+function sourcePendingCard(s,e,idx){const m=REGISTRY[e.exerciseId];return `<article class="exercise source-pending" data-slot="${esc(e.slot)}"><div class="ex-head"><div><strong>${idx+1}. ${esc(m.name)}</strong><span class="badge warn">Нужно уточнить</span></div></div><p class="unit-note">${esc(m.raw)} Это не назначенный подход: отметка выполнения и нагрузка по нему отключены.</p><button class="text-button inset" onclick="go('documentReview')">Открыть сверку документа</button></article>`;}
+function renderDocumentWorkoutNotice(s){const node=$('documentWorkoutNote');if(!node)return;const n=pendingDocumentCount(s);node.hidden=!n;node.innerHTML=n?`<strong>${n} пунктов требуют выбора</strong><p>${(s.docIssues||[]).map(k=>esc(DOC_ISSUES[k])).join('<br>')}</p><p class="note">Подтверждённые упражнения доступны. Неуточнённые блоки не считаются выполненными; их отсутствие не означает отмену по вашему плану.</p><button class="btn secondary" onclick="go('documentReview')">Проверить пункты из Word</button>`:'';}
+function reviewSelect(id,label,options,value){return `<label class="field-label" for="${id}">${esc(label)}</label><select class="input" id="${id}" onchange="markDirty()"><option value="">Не выбрано — оставить пометку</option>${options.map(([v,t])=>`<option value="${v}" ${value===v?'selected':''}>${esc(t)}</option>`).join('')}</select>`;}
+function renderDocumentReview(){
+ const d=state.documentSelections||{};
+ const absOptions=ABS.filter(e=>!e.unresolved).map(e=>[e.id,e.name+(e.unit==='seconds'?' · секунды':'')]);
+ let html=`<div class="card"><h3>Расписание подтверждено</h3><p>Неделя 1: Пн — бицепс + трицепс; Чт — грудь + спина.<br>Неделя 2: Пн — бицепс + грудь; Чт — трицепс + спина.<br>Неделя 3: Пн — спина + бицепс; Чт — грудь + трицепс.</p><p>Вт — шея + трапеция. Ср — кардио. Сб — ноги + дополнительные группы. Пт и Вс — отдых.</p><p>Пресс в начале и конце, затем бассейн: Пн, Ср, Чт, Сб. Для трапеции 3 × 60 — повторения; планка — секунды.</p><p class="note">Ниже остаются только неуточнённые названия пресса. Все введённые веса сохранены.</p></div>`;
+ for(const e of DOC_PLAN.pending.filter(x=>x.unresolved)){const isAbs=e.kind==='abs';html+=`<div class="card spaced"><h3>${esc(e.name)}</h3><p class="note">${esc(e.raw)}</p>${reviewSelect('doc_'+e.id,'Конкретное упражнение',isAbs?absOptions:CATALOG.filter(x=>!x.unresolved).map(x=>[x.id,x.name]),d[e.id])}`;
+ if(e.id==='doc_sat_end3')html+=`<label class="field-label" for="doc_satEndCount">Количество на один подход (в источнике и 15, и 8; подходов 2)</label><input id="doc_satEndCount" class="input" inputmode="numeric" value="${d.satEndCount??''}" placeholder="Введите выбранное число" oninput="markDirty()">`;
+ if(e.id==='doc_trap')html+=`${reviewSelect('doc_trapUnit','Единица количества',[['reps','Повторения'],['seconds','Секунды удержания']],d.trapUnit)}<label class="field-label" for="doc_trapCount">Количество в подходе (подходов 3)</label><input id="doc_trapCount" class="input" inputmode="numeric" value="${d.trapCount??''}" placeholder="В файле: 60 без единицы" oninput="markDirty()"><p class="note">Если 60 обозначает килограммы, здесь задайте повторения, а вес внесите в базовые веса выбранного упражнения. Значение 10 кг от подъёма гантелей через стороны не переносится на трапецию автоматически.</p>`;
+ html+='</div>';
+ }
+ html+=`<div class="card spaced"><h3>Как применить</h3><label class="field-label" for="doc_applyFrom">Применить программу с даты</label><input id="doc_applyFrom" class="input" type="date" value="${localISO()}" oninput="markDirty()"><label class="field-label" for="doc_anchor">Начало первой расчётной недели</label><input id="doc_anchor" class="input" type="date" value="${state.startDate}" oninput="markDirty()"><p class="note">В Word: 23.10.2026 — пятница, хотя поле подписано «понедельник». Дата не переносится автоматически. Цикл и прибавки отсчитываются каждые 7 дней от выбранной даты.</p><label class="toggle-row"><input type="checkbox" id="doc_replaceWeights" onchange="markDirty()">Повторно загрузить 46 записей весов из Word вместо текущих настроек этих упражнений</label><p class="note">Выключено по умолчанию: ваши уже изменённые базы сохранятся. При первом запуске значения Word уже загружены.</p></div>`;
+ $('documentReviewFields').innerHTML=html;$('documentError').textContent='';
+ $('sourceDocumentText').innerHTML=DOC_PLAN.notes.map(t=>`<p class="note">${esc(t)}</p>`).join('')+Object.entries(DOC_PLAN.rawTables).map(([day,rows])=>`<details class="card spaced"><summary>${DAY_NAMES[day]} · исходные ячейки</summary>${rows.slice(1).map(r=>`<h4>${esc(r[1].replace(/\n/g,' '))}</h4>${[0,1,2].map(i=>`<p class="note"><b>Неделя ${i+1}:</b> ${esc(r[i+2]).replace(/\n/g,'<br>')}</p>`).join('')}`).join('')}</details>`).join('');
+}
+function saveDocumentReview(){try{
+ const raw={};for(const k of ['monPool','thuPool','thuAbs','tuesday',...DOC_PLAN.pending.map(e=>e.id),'satEndCount','trapCount','trapUnit'])raw[k]=$('doc_'+k)?.value||'';
+ if(raw.doc_sat_end3&&(!Number.isInteger(num(raw.satEndCount))||num(raw.satEndCount)<1||num(raw.satEndCount)>500))throw Error('Для заключительного пресса третьей недели выберите одно количество.');
+ if(raw.doc_trap&&(!['reps','seconds'].includes(raw.trapUnit)||!Number.isInteger(num(raw.trapCount))||num(raw.trapCount)<1||num(raw.trapCount)>500))throw Error('Для подъёма на трапецию укажите единицу и количество в подходе.');
+ Object.assign(raw,{monPool:'yes',thuPool:'yes',thuAbs:'yes',tuesday:'reserved',trapCount:60,trapUnit:'reps'});
+ const d=cleanDocumentSelections(raw),from=$('doc_applyFrom').value,anchor=$('doc_anchor').value;
+ if(!validDate(from)||!validDate(anchor))throw Error('Проверьте даты применения и начала цикла.');
+ if(from<localISO())throw Error('Для применения выберите сегодня или будущую дату; архив не переписывается.');
+ const cycles=documentCycles(d).map(normalizeProgramDays);
+ if(!confirm('Применить план из Word с '+dateLabel(from,true)+'? Незаданные пункты останутся помеченными. Начатые и завершённые занятия сохранятся.'))return;
+ try{localStorage.setItem(SNAPSHOT_KEY,JSON.stringify({app:'Virkan Gym',schemaVersion:VERSION,state:copy(state)}));}catch(e){throw Error('Не удалось сделать защитную копию. Сначала сохраните JSON.');}
+ const replace=$('doc_replaceWeights').checked;
+ if(!commit(()=>{
+  state.documentSelections=d;state.startDate=anchor;
+  const version={id:'document_'+Date.now(),effectiveFrom:from,savedAt:new Date().toISOString(),anchorDate:anchor,cycles,days:cycles[0]};
+  state.programVersions=state.programVersions.filter(v=>v.effectiveFrom!==from);state.programVersions.push(version);state.programVersions.sort((a,b)=>a.effectiveFrom.localeCompare(b.effectiveFrom));
+  const next=state.programVersions.find(v=>v.effectiveFrom>from);
+  for(const [sid,s] of Object.entries(state.sessions))if(s.originalDate>=from&&(!next||s.originalDate<next.effectiveFrom)&&!protectedSession(s)){delete state.sessions[sid];if(selectedSession===sid)selectedSession=null;}
+  if(replace)for(const row of DOC_PLAN.weights)state.exerciseSettings[row.id]=defaultConfig(REGISTRY[row.id]);
+ }))throw Error('Не удалось сохранить изменения.');
+ settingsDirty=false;go('plan');toast('План сохранён. Неоднозначные пункты без выбора остаются видимыми.');
+ }catch(e){$('documentError').textContent=e.message;}}
+
 let loadNotice='';
 function load(){
  for(const k of [KEY,'virkan_gym_html_v1_8','virkan_gym_html_v1_7','virkan_gym_html_v1_6','virkan_gym_html_v1_5']){
@@ -124,14 +181,14 @@ function load(){
 }
 let state=load(), page='home',selectedSession=null,planWeek=monday(),activeTab=null,progressMode='sets',toastTimeout=null,settingsDirty=false,pendingImport=null,editTarget=null,audioCtx=null,lastDay=localISO();
 function warn(s){$('storageWarning').textContent=s;$('storageWarning').hidden=!s;}
-function persist(){try{state.revision++;localStorage.setItem(KEY,JSON.stringify(state));warn('');return true;}catch(e){warn('Браузер не разрешил сохранить данные. Не закрывайте страницу; создайте JSON-копию.');return false;}}
+function persist(){try{state.revision++;localStorage.setItem(KEY,JSON.stringify(state));warn('');scheduleNativeSync();return true;}catch(e){warn('Браузер не разрешил сохранить данные. Не закрывайте страницу; создайте JSON-копию.');return false;}}
 function commit(change){const before=copy(state);change();if(!persist()){state=before;toast('Изменение не сохранено.');return false;}return true;}
 function toast(s){$('toast').textContent=s;$('toast').classList.add('show');clearTimeout(toastTimeout);toastTimeout=setTimeout(()=>$('toast').classList.remove('show'),3200);}
 function weekIndex(date=localISO()){return Math.max(0,Math.floor((dayNum(date)-dayNum(state.startDate))/7));}
-function targetWeight(id,date=localISO()){if(id==='dips')return 0;const c=state.exerciseSettings[id];if(!c)return 0;if(c.mode==='bodyweight'||c.mode==='reps')return 0;if(c.base==null)return null;return Math.round((c.base+c.step*weekIndex(date))*100)/100;}
-function targetReps(id,date,fallback){const c=state.exerciseSettings[id];return c?.mode==='reps'?c.baseReps+c.repStep*weekIndex(date):fallback;}
+function targetWeight(id,date=localISO()){if(id==='dips')return 0;const c=state.exerciseSettings[id];if(!c||c.mode==='bodyweight'||c.mode==='reps')return 0;if(c.base==null)return null;return Math.round((c.base+(c.step??0)*weekIndex(date))*100)/100;}
+function targetReps(id,date,fallback){const c=state.exerciseSettings[id];return c?.mode==='reps'&&c.baseReps!=null&&c.repStep!=null?c.baseReps+c.repStep*weekIndex(date):fallback;}
 function draftReps(s,e,z){return z.done||z.repsManual?z.reps:String(targetReps(effectiveId(e,z),s.scheduledDate,Number(z.reps)||e.reps));}
-function resultText(r){if(r.weight==null||r.reps==null)return 'В старой версии сохранена только отметка';return r.kind==='abs'?(r.weight>0?'+'+fmt(r.weight)+' кг × ':'')+r.reps+' повторений':fmt(r.weight)+' кг × '+r.reps+' повторений';}
+function resultText(r){if(r.weight==null||r.reps==null)return 'В старой версии сохранена только отметка';if(r.unit==='seconds')return (r.weight>0?fmt(r.weight)+' кг · ':'')+r.reps+' сек';return r.kind==='abs'?(r.weight>0?'+'+fmt(r.weight)+' кг × ':'')+r.reps+' повторений':fmt(r.weight)+' кг × '+r.reps+' повторений';}
 function targetPool(){return null;}
 function planned(date){
  const found=Object.values(state.sessions).find(s=>s.scheduledDate===date&&s.tabs.length);if(found)return found;
@@ -143,8 +200,8 @@ function stats(s){const all=s?s.exercises.flatMap(e=>e.sets.map(z=>({e,z}))):[];
 function allResults(){const a=[];for(const s of Object.values(state.sessions))for(const e of s.exercises)for(const z of e.sets)if(z.done&&z.result)a.push({...z.result,sid:s.id,slot:e.slot,number:z.number});return a;}
 function prior(id,sid){const list=allResults().filter(r=>r.exerciseId===id&&r.sid!==sid&&r.date<=localISO()&&r.weight!=null&&r.reps!=null);if(!list.length)return [];list.sort((a,b)=>b.date.localeCompare(a.date)||String(b.completedAt||'').localeCompare(String(a.completedAt||'')));const latest=list[0];return list.filter(r=>r.sid===latest.sid&&r.date===latest.date).sort((a,b)=>a.number-b.number);}
 function mayLeave(){return !settingsDirty||confirm('Несохранённые изменения формы будут потеряны. Перейти?');}
-function go(p){if(!mayLeave())return;settingsDirty=false;page=p;document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id===p));document.querySelectorAll('.nav').forEach(n=>n.classList.toggle('active',n.dataset.screen===((['atlas','bases','profileSettings','backup','programSettings','timerSettings','programEditor'].includes(p))?'settings':p)));renderPage();drawTimer();window.scrollTo({top:0,behavior:'instant'});}
-function renderPage(){({home:renderHome,plan:renderPlan,workout:renderWorkout,progress:renderProgress,settings:renderSettings,atlas:renderAtlas,bases:renderBases,profileSettings:renderProfile,backup:renderBackup,programSettings:renderProgram,timerSettings:renderTimerSettings,programEditor:renderPermanentEditor})[page]?.();}
+function go(p){if(!mayLeave())return;settingsDirty=false;page=p;document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id===p));document.querySelectorAll('.nav').forEach(n=>n.classList.toggle('active',n.dataset.screen===((['notifications','documentReview','atlas','bases','profileSettings','backup','programSettings','timerSettings','programEditor'].includes(p))?'settings':p)));renderPage();drawTimer();window.scrollTo({top:0,behavior:'instant'});}
+function renderPage(){({notifications:renderNotifications,documentReview:renderDocumentReview,home:renderHome,plan:renderPlan,workout:renderWorkout,progress:renderProgress,settings:renderSettings,atlas:renderAtlas,bases:renderBases,profileSettings:renderProfile,backup:renderBackup,programSettings:renderProgram,timerSettings:renderTimerSettings,programEditor:renderPermanentEditor})[page]?.();}
 function openWorkout(dateOrId){if(!mayLeave())return;const s=state.sessions[dateOrId]||planned(dateOrId);if(!s){toast('На этот день тренировка не запланирована.');return;}if(!state.sessions[s.id]&&!commit(()=>{state.sessions[s.id]=s;}))return;selectedSession=s.id;activeTab=s.tabs[0];settingsDirty=false;go('workout');}
 function openToday(){const s=planned(localISO());if(s)openWorkout(s.id in state.sessions?s.id:localISO());else go('plan');}
 function renderHome(){
@@ -190,26 +247,26 @@ function locate(key){const [sid,slot,n]=String(key).split('|'),s=state.sessions[
 function inputDraft(key,field,value){const q=locate(key);if(!q||q.z.done||!editable(q.s)||!['weight','reps'].includes(field))return;commit(()=>{q.z[field]=String(value);if(field==='reps')q.z.repsManual=true;});}
 function restFor(){return 90;}
 function exerciseCard(s,e,idx){
- const meta=REGISTRY[e.exerciseId],pending=e.sets.filter(z=>!z.done),isEdit=editable(s);if(!pending.length)return '';
+ const meta=REGISTRY[e.exerciseId];if(meta.unresolved)return sourcePendingCard(s,e,idx);const pending=e.sets.filter(z=>!z.done),isEdit=editable(s);if(!pending.length)return '';
  if(e.skipped)return `<article class="exercise skipped" data-slot="${e.slot}"><div class="ex-head"><div><strong>${idx+1}. ${esc(meta.name)}</strong><div class="muted">Пропущено в этой тренировке</div></div></div><button class="text-button inset" onclick="unskip('${s.id}','${e.slot}')">Вернуть упражнение</button></article>`;
  const cfg=state.exerciseSettings[e.exerciseId],p=prior(e.exerciseId,s.id),repsMode=cfg?.mode==='reps',target=repsMode?targetReps(e.exerciseId,s.scheduledDate,e.reps):targetWeight(e.exerciseId,s.scheduledDate);
  const basis=repsMode?fmt(cfg.baseReps)+' повт.':cfg?.mode==='bodyweight'?'Без веса':cfg?.base==null?'Не задан':fmt(cfg.base)+' кг';
- const unit=repsMode?'повт.':'кг',step=repsMode?cfg.repStep:cfg?.step;
+ const unit=repsMode?(e.unit==='seconds'?'сек':'повт.'):'кг',step=repsMode?cfg.repStep:cfg?.step;
  const note=p.length?`${dateLabel(p[0].date)} · `+p.map(resultText).join(' / '):'Предыдущих результатов пока нет.';
  let rows='';for(const z of pending){const id=effectiveId(e,z),c=state.exerciseSettings[id],noWeight=['reps','bodyweight'].includes(c?.mode),key=sessionKey(s.id,e.slot,z.number);
- rows+=`<tr data-key="${key}"><td>${z.number}</td><td>${noWeight?'<span class="bodyweight">Без веса</span>':`<input class="set-input" type="text" inputmode="decimal" data-field="weight" aria-label="Вес, кг — подход ${z.number}" value="${esc(draftWeight(s,e,z))}" placeholder="кг" ${isEdit?'':'disabled'} oninput="inputDraft('${key}','weight',this.value)">`}${id!==e.exerciseId?`<small class="row-override">${esc(REGISTRY[id].name)}</small>`:''}</td><td><input type="text" inputmode="numeric" data-field="reps" aria-label="Повторения — подход ${z.number}" value="${esc(draftReps(s,e,z))}" ${isEdit?'':'disabled'} oninput="inputDraft('${key}','reps',this.value)"></td><td><button class="complete-button" ${isEdit?'':'disabled'} onclick="completeSet('${key}',this)">${isEdit?'✓ Выполнено':'Просмотр'}</button></td></tr>`;}
- const autoCaption=cfg?.mode==='bodyweight'?'Без дополнительного веса':`неделя ${weekIndex(s.scheduledDate)+1} · +${fmt(step)} ${unit}/нед.`;
- return `<article class="exercise ${meta.kind==='abs'?'abs':''}" data-slot="${e.slot}"><div class="ex-head"><div><strong>${idx+1}. ${esc(meta.name)}</strong><button class="guide-link" onclick="openGuide('${meta.id}')">Фото выполнения</button><div class="muted">Осталось ${pending.length} из ${e.sets.length} · отдых ${restFor(e.exerciseId)} сек</div></div><button class="text-button" aria-label="Изменить ${esc(meta.name)}" onclick="openExerciseEdit('${s.id}','${e.slot}')">Изменить</button></div>${cfg?`<div class="weight-box"><div class="weight-stat"><b>${basis}</b><span>${repsMode?'база повторений':'базовый вес'}</span></div><div class="weight-stat"><b>${target==null?'Не задан':fmt(target)+' '+unit}</b><span>${autoCaption}</span></div></div><p class="unit-note">${repsMode?'Повторения увеличиваются каждую неделю. Фактическое число можно изменить перед отметкой.':esc(EQUIPMENT[cfg.equipment])}${cfg.base===null&&cfg.mode==='weighted'?' · задайте базу в настройках':''}</p>`:''}<div class="previous-result"><span class="eyebrow">В ПРОШЛЫЙ РАЗ</span><div>${esc(note)}</div>${p.length&&cfg?`<button class="text-button" onclick="applyPrevious('${s.id}','${e.slot}')">${repsMode?'Использовать прошлые повторения':'Использовать прошлый вес'}</button>`:''}</div><table class="set-table"><thead><tr><th>№</th><th>${meta.kind==='abs'?'Доп. кг':'кг'}</th><th>Повт.</th><th>Отметка</th></tr></thead><tbody>${rows}</tbody></table></article>`;
+ rows+=`<tr data-key="${key}"><td>${z.number}</td><td>${noWeight?'<span class="bodyweight">Без веса</span>':`<input class="set-input" type="text" inputmode="decimal" data-field="weight" aria-label="Вес, кг — подход ${z.number}" value="${esc(draftWeight(s,e,z))}" placeholder="кг" ${isEdit?'':'disabled'} oninput="inputDraft('${key}','weight',this.value)">`}${id!==e.exerciseId?`<small class="row-override">${esc(REGISTRY[id].name)}</small>`:''}</td><td><input type="text" inputmode="numeric" data-field="reps" aria-label="${e.unit==='seconds'?'Секунды':'Повторения'} — подход ${z.number}" value="${esc(draftReps(s,e,z))}" ${isEdit?'':'disabled'} oninput="inputDraft('${key}','reps',this.value)"></td><td><button class="complete-button" ${isEdit?'':'disabled'} onclick="completeSet('${key}',this)">${isEdit?'✓ Выполнено':'Просмотр'}</button></td></tr>`;}
+ const autoCaption=cfg?.mode==='bodyweight'?'Без дополнительного веса':step==null?'Прибавка не задана':`неделя ${weekIndex(s.scheduledDate)+1} · +${fmt(step)} ${unit}/нед.`;
+ return `<article class="exercise ${meta.kind==='abs'?'abs':''}" data-slot="${e.slot}"><div class="ex-head"><div><strong>${idx+1}. ${esc(meta.name)}</strong><button class="guide-link" onclick="openGuide('${meta.id}')">Фото выполнения</button><div class="muted">${e.unit==='seconds'?'Удержание в секундах · ':''}Осталось ${pending.length} из ${e.sets.length} · отдых ${restFor(e.exerciseId)} сек</div></div><button class="text-button" aria-label="Изменить ${esc(meta.name)}" onclick="openExerciseEdit('${s.id}','${e.slot}')">Изменить</button></div>${cfg?`<div class="weight-box"><div class="weight-stat"><b>${basis}</b><span>${repsMode?'база повторений':'базовый вес'}</span></div><div class="weight-stat"><b>${target==null?'Не задан':fmt(target)+' '+unit}</b><span>${autoCaption}</span></div></div><p class="unit-note">${repsMode?'Повторения увеличиваются каждую неделю. Фактическое число можно изменить перед отметкой.':esc(EQUIPMENT[cfg.equipment])}${cfg.base===null&&cfg.mode==='weighted'?' · задайте базу в настройках':''}</p>`:''}<div class="previous-result"><span class="eyebrow">В ПРОШЛЫЙ РАЗ</span><div>${esc(note)}</div>${p.length&&cfg?`<button class="text-button" onclick="applyPrevious('${s.id}','${e.slot}')">${repsMode?'Использовать прошлые повторения':'Использовать прошлый вес'}</button>`:''}</div><table class="set-table"><thead><tr><th>№</th><th>${meta.kind==='abs'?'Доп. кг':'кг'}</th><th>${e.unit==='seconds'?'Сек.':'Повт.'}</th><th>Отметка</th></tr></thead><tbody>${rows}</tbody></table></article>`;
 }
 function renderWorkout(){
  let s=current();if(!s){const t=planned(localISO());if(t){if(!state.sessions[t.id]&&!commit(()=>{state.sessions[t.id]=t;}))return;selectedSession=t.id;s=current();}}
  $('workoutBody').hidden=!s;$('noWorkout').hidden=!!s;if(!s){$('workoutTitle').textContent='Тренировка';$('workoutSubtitle').textContent='Сегодня отдых';return;}
- const st=stats(s),isEdit=editable(s);$('workoutTitle').textContent=s.title;$('workoutSubtitle').textContent=`${dateLabel(s.scheduledDate,true)} · вариант ${(s.cycleIndex??0)+1}/3 · отдых 90 сек`;
+ const st=stats(s),isEdit=editable(s);renderDocumentWorkoutNotice(s);$('workoutTitle').textContent=s.title;$('workoutSubtitle').textContent=`${dateLabel(s.scheduledDate,true)} · вариант ${(s.cycleIndex??0)+1}/3 · отдых 90 сек`;
  $('previewNote').hidden=isEdit;$('previewNote').innerHTML=`Просмотр без записи результатов. <button class="btn secondary" onclick="openMove('${s.id}','${localISO()}')">Выполнить сегодня</button>`;
  $('moveWorkout').onclick=()=>openMove(s.id);$('setStatus').innerHTML=`<div class="row"><strong>Осталось ${st.left} · выполнено ${st.done}</strong><button class="completed-link" onclick="openCompleted()">Выполненные</button></div>`;
  for(const id of ['absStartList','exerciseList','absEndList'])$(id).innerHTML='';
  s.exercises.forEach((e,i)=>{$(e.slot==='abs_start'?'absStartList':e.slot==='abs_end'?'absEndList':'exerciseList').innerHTML+=exerciseCard(s,e,i);});
- if(!st.left)$('absStartList').innerHTML='<div class="empty-sets">Все подходы отмечены. Кардио и бассейн отмечаются отдельно.</div>';
+ if(!st.left&&!pendingDocumentCount(s))$('absStartList').innerHTML='<div class="empty-sets">Все подходы отмечены. Кардио и бассейн отмечаются отдельно.</div>';
  $('gymTab').hidden=false;$('cardioTab').hidden=!s.tabs.includes('cardio');$('poolTab').hidden=!s.tabs.includes('pool');
  const a=s.activities.cardio,dr=s.activityDrafts.cardio;
  $('cardioMin').value=dr?.minutes??a?.minutes??'';$('cardioKm').value=dr?.distance??a?.distance??'';
@@ -222,10 +279,10 @@ function renderWorkout(){
 function switchWorkout(){renderWorkout();}
 function completeSet(key,button){
  const q=locate(key);if(!q||q.z.done)return;if(!editable(q.s)){toast('Это просмотр. Сначала перенесите тренировку на сегодня.');return;}
- const id=effectiveId(q.e,q.z),meta=REGISTRY[id],cfg=state.exerciseSettings[id],row=button.closest('tr'),w=cfg?.mode==='reps'||cfg?.mode==='bodyweight'?0:num(row.querySelector('[data-field="weight"]').value),r=num(row.querySelector('[data-field="reps"]').value);
+ const id=effectiveId(q.e,q.z),meta=REGISTRY[id];if(meta.unresolved){toast('Сначала уточните упражнение.');return;}const cfg=state.exerciseSettings[id],row=button.closest('tr'),w=cfg?.mode==='reps'||cfg?.mode==='bodyweight'?0:num(row.querySelector('[data-field="weight"]').value),r=num(row.querySelector('[data-field="reps"]').value);
  if(!Number.isFinite(w)||w<0||w>5000){toast('Введите фактический вес от 0 до 5000 кг.');return;}if(!Number.isInteger(r)||r<1||r>500){toast('Введите целое число повторений от 1 до 500.');return;}
  armAudio();const sec=restFor(id);
- if(!commit(()=>{q.z.done=true;q.z.result={exerciseId:id,name:meta.name,kind:meta.kind,weight:w,reps:r,date:localISO(),completedAt:new Date().toISOString(),migrated:false,equipment:cfg?.equipment||null};q.z.weight=String(w);q.z.reps=String(r);q.z.repsManual=true;q.s.finishedAt=null;q.s.status='started';state.timer={active:true,endAt:Date.now()+sec*1000,remaining:sec,sessionId:q.s.id};}))return;
+ if(!commit(()=>{q.z.done=true;q.z.result={exerciseId:id,name:meta.name,kind:meta.kind,unit:q.e.unit||meta.unit||'reps',weight:w,reps:r,date:localISO(),completedAt:new Date().toISOString(),migrated:false,equipment:cfg?.equipment||null};q.z.weight=String(w);q.z.reps=String(r);q.z.repsManual=true;q.s.finishedAt=null;q.s.status='started';state.timer={active:true,endAt:Date.now()+sec*1000,remaining:sec,sessionId:q.s.id};}))return;
  renderWorkout();drawTimer();toast(`Подход ${q.z.number} сохранён в «Прогресс».`);
 }
 function restoreSet(key){const q=locate(key);if(!q||!q.z.done)return;if(!editable(q.s)||q.z.result.date!==localISO()){toast('Вернуть можно сегодняшний подход в тренировку, назначенную на сегодня.');return;}
@@ -237,7 +294,7 @@ function applyPrevious(sid,slot){
  if(!commit(()=>{for(const z of e.sets)if(!z.done&&!z.overrideId){const r=p.find(r=>r.number===z.number)||p[p.length-1];if(repMode){z.reps=String(r.reps);z.repsManual=true;}else z.weight=String(r.weight);}}))return;
  renderWorkout();toast('Предыдущие значения подставлены. Базовые настройки и история не изменены.');
 }
-function openExerciseEdit(sid,slot){const s=state.sessions[sid],e=s?.exercises.find(x=>x.slot===slot);if(!e)return;editTarget={sid,slot};const meta=REGISTRY[e.exerciseId],options=meta.kind==='abs'?[meta]:CATALOG.filter(x=>x.group===meta.group);
+function openExerciseEdit(sid,slot){const s=state.sessions[sid],e=s?.exercises.find(x=>x.slot===slot);if(!e)return;if(REGISTRY[e.exerciseId]?.unresolved){go('documentReview');return;}editTarget={sid,slot};const meta=REGISTRY[e.exerciseId],options=meta.kind==='abs'?[meta]:CATALOG.filter(x=>x.group===meta.group);
  showDialog('Изменить упражнение',`<p class="note">Изменения действуют только в этой тренировке. Выполненные подходы сохранят прежние названия и результаты.</p><label for="editExercise" class="field-label">Упражнение</label><select id="editExercise" class="input">${options.map(x=>`<option value="${x.id}" ${x.id===e.exerciseId?'selected':''}>${esc(x.name)}</option>`).join('')}</select><div class="form-row spaced"><label>Подходов<input id="editCount" class="input" type="number" min="1" max="20" value="${e.sets.length}"></label><label>Повторений<input id="editReps" class="input" type="number" min="1" max="500" value="${e.reps}"></label></div><p id="editError" class="form-error"></p><button class="big-action" onclick="saveExerciseEdit()">СОХРАНИТЬ ДЛЯ ЭТОЙ ТРЕНИРОВКИ</button><button class="text-button inset" onclick="skipExercise()">Пропустить оставшиеся подходы упражнения</button>`);
 }
 function saveExerciseEdit(){const {sid,slot}=editTarget||{},s=state.sessions[sid],e=s?.exercises.find(x=>x.slot===slot);if(!e)return;const id=$('editExercise').value,n=num($('editCount').value),r=num($('editReps').value);if(!REGISTRY[id]||!Number.isInteger(n)||n<1||n>20||!Number.isInteger(r)||r<1||r>500){$('editError').textContent='Проверьте количество подходов и повторений.';return;}if(e.sets.some(z=>z.number>n&&z.done)){$('editError').textContent='Нельзя удалить выполненный подход. Сначала верните его из прогресса.';return;}
@@ -256,7 +313,7 @@ function togglePool(){const s=current();if(!editable(s)||!s.tabs.includes('pool'
  const had=!!s.activities.pool;
  if(commit(()=>{if(had)delete s.activities.pool;else s.activities.pool={date:localISO(),savedAt:new Date().toISOString(),meta:'Выполнено'};s.status='started';s.finishedAt=null;})){renderWorkout();toast(had?'Отметка бассейна отменена.':'Бассейн выполнен.');}
 }
-function finishWorkout(){const s=current();if(!editable(s))return;const st=stats(s),missing=['cardio','pool'].filter(k=>s.tabs.includes(k)&&!s.activities[k]);const partial=!!(st.left||st.skipped||missing.length);if(partial&&!confirm(`Есть невыполненные блоки (${st.left} подходов${missing.length?', '+missing.map(k=>k==='pool'?'бассейн':'кардио').join(', '):''}). Сохранить частичный результат?`))return;if(commit(()=>{s.finishedAt=new Date().toISOString();s.status=partial?'partial':'done';state.timer={active:false,endAt:null,remaining:0,sessionId:null};})){drawTimer();progressMode='metrics';go('progress');toast('Итог сохранён.');}}
+function finishWorkout(){const s=current();if(!editable(s))return;const st=stats(s),missing=['cardio','pool'].filter(k=>s.tabs.includes(k)&&!s.activities[k]);const pending=pendingDocumentCount(s),partial=!!(st.left||st.skipped||missing.length||pending);if(partial&&!confirm(`${pending?'Осталось '+pending+' неуточнённых пунктов документа. ':''}Есть невыполненные блоки (${st.left} подходов${missing.length?', '+missing.map(k=>k==='pool'?'бассейн':'кардио').join(', '):''}). Сохранить частичный результат?`))return;if(commit(()=>{s.finishedAt=new Date().toISOString();s.status=partial?'partial':'done';state.timer={active:false,endAt:null,remaining:0,sessionId:null};})){drawTimer();progressMode='metrics';go('progress');toast('Итог сохранён.');}}
 function openCompleted(){progressMode='sets';go('progress');$('completedFilter').value='session';renderCompletedSets();}
 function renderProgress(){document.querySelectorAll('[data-progress]').forEach(b=>b.classList.toggle('active',b.dataset.progress===progressMode));$('completedProgress').hidden=progressMode!=='sets';$('metricsProgress').hidden=progressMode!=='metrics';renderCompletedSets();$('progressWeight').textContent=state.profile.weight==null?'Не задан':fmt(state.profile.weight)+' кг';$('progressGoal').textContent=state.profile.goal==null?'Не задан':fmt(state.profile.goal)+' кг';renderHistory();drawChart();}
 function switchProgress(mode){progressMode=mode;renderProgress();}
@@ -264,7 +321,7 @@ function renderCompletedSets(){const filter=$('completedFilter').value,records=a
  $('completedSummary').textContent=records.length+' подходов';if(!records.length){$('completedSetsList').innerHTML='<div class="empty-sets"><strong>Пока нет выполненных подходов</strong><small>Нажмите «Выполнено» в сегодняшней тренировке. Результат появится здесь.</small></div>';return;}
  let html='',lastGroup='';for(const r of records){const group=r.date+'|'+r.sid+'|'+r.exerciseId;if(group!==lastGroup){if(lastGroup)html+='</section>';html+=`<section class="done-exercise"><header><div><span class="eyebrow">${dateLabel(r.date,true)}</span><h3>${esc(r.name)}</h3><small class="muted">${esc(state.sessions[r.sid].title)}</small></div></header>`;lastGroup=group;}const result=resultText(r);const key=sessionKey(r.sid,r.slot,r.number);html+=`<div class="done-set"><div class="row"><span class="set-label">Подход ${r.number}</span><span class="done-time">${esc(timeLabel(r.completedAt))}</span></div><div class="result">${result}</div>${r.equipment?`<small class="muted">${esc(EQUIPMENT[r.equipment])}</small><br>`:''}${r.date===localISO()&&editable(state.sessions[r.sid])?`<button class="restore-set" onclick="restoreSet('${key}')">Вернуть в тренировку</button>`:''}</div>`;}html+='</section>';$('completedSetsList').innerHTML=html;
 }
-function renderHistory(){const records=[];for(const s of Object.values(state.sessions)){if(s.finishedAt){const st=stats(s);records.push({date:s.finishedAt.slice(0,10),title:s.title,meta:`${s.status==='partial'?'Завершено частично':'Завершено'} · ${st.done} из ${st.total} подходов`,sid:s.id});}for(const [kind,a] of Object.entries(s.activities)){records.push({date:a.date,title:kind==='pool'?'Бассейн':'Кардио',meta:a.meta||`${fmt(a.distance)} ${kind==='pool'?'м':'км'} · ${fmt(a.minutes)} мин`,sid:s.id});}}
+function renderHistory(){const records=[];for(const s of Object.values(state.sessions)){if(s.finishedAt){const st=stats(s);records.push({date:localISO(new Date(s.finishedAt)),title:s.title,meta:`${s.status==='partial'?'Завершено частично':'Завершено'} · ${st.done} из ${st.total} подходов`,sid:s.id});}for(const [kind,a] of Object.entries(s.activities)){records.push({date:a.date,title:kind==='pool'?'Бассейн':'Кардио',meta:a.meta||`${fmt(a.distance)} ${kind==='pool'?'м':'км'} · ${fmt(a.minutes)} мин`,sid:s.id});}}
  records.sort((a,b)=>b.date.localeCompare(a.date));$('historyList').innerHTML=records.map(r=>`<div class="item"><div class="row"><div><strong>${esc(r.title)}</strong><small>${esc(r.meta)}</small></div><span class="badge">${dateLabel(r.date)}</span></div><button class="text-button" onclick="openWorkout('${r.sid}')">Открыть детали</button></div>`).join('')+state.legacyHistory.map(h=>`<div class="item"><strong>${esc(h.title)}</strong><small>${esc(h.meta)} · ${esc(h.d)}</small></div>`).join('')||'<div class="item"><small>Пока нет завершённых тренировок, кардио или плавания.</small></div>';}
 function addWeight(){showDialog('Текущий вес',`<label class="field-label" for="newWeight">Вес, кг</label><input class="input" id="newWeight" inputmode="decimal" value="${state.profile.weight==null?'':fmt(state.profile.weight)}" placeholder="Не задан"><p id="weightError" class="form-error"></p><button class="big-action" onclick="saveWeight()">СОХРАНИТЬ</button>`);}
 function saveWeight(){const n=profileNumber($('newWeight').value,20,400);if(n==null){$('weightError').textContent='Введите вес от 20 до 400 кг.';return;}if(!commit(()=>{state.profile.weight=n;state.weights=state.weights.filter(x=>x.date!==localISO());state.weights.push({date:localISO(),label:localISO(),v:n});}))return;closeDialog();renderPage();}
@@ -274,24 +331,86 @@ function drawTimer(){const n=remaining(),visible=state.timer.active&&n>0;$('rest
 function toggleTimer(){if(!state.timer.active)return;if(!commit(()=>{if(state.timer.endAt!==null){state.timer.remaining=remaining();state.timer.endAt=null;}else state.timer.endAt=Date.now()+state.timer.remaining*1000;}))return;armAudio();drawTimer();}
 function extendTimer(){if(!state.timer.active)return;commit(()=>{if(state.timer.endAt!==null)state.timer.endAt+=30000;else state.timer.remaining+=30;});drawTimer();}
 function skipTimer(){if(commit(()=>{state.timer={active:false,endAt:null,remaining:0,sessionId:null};}))drawTimer();}
-function armAudio(){if(!state.rest.sound)return;try{const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;audioCtx??=new AC();if(audioCtx.state==='suspended')audioCtx.resume().catch(()=>{});}catch(e){}}
-function timerSound(){if(state.rest.sound&&audioCtx?.state==='running'){try{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.connect(g);g.connect(audioCtx.destination);o.frequency.value=660;g.gain.setValueAtTime(.12,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+.35);o.start();o.stop(audioCtx.currentTime+.36);}catch(e){}}if(state.rest.vibration&&navigator.vibrate)navigator.vibrate([100,50,100]);}
+function armAudio(force=false){
+ if(!force&&!state.rest.sound)return Promise.resolve(false);
+ try{
+  const AC=window.AudioContext||window.webkitAudioContext;
+  if(!AC)return Promise.resolve(false);
+  if(!audioCtx||audioCtx.state==='closed'){audioCtx=new AC();lastSoundAt=-Infinity;}
+  if(audioCtx.state==='running')return Promise.resolve(true);
+  // A blocked resume must not hang UI or leave an unhandled rejection.
+  return Promise.race([
+   Promise.resolve(audioCtx.resume()).then(()=>audioCtx.state==='running').catch(()=>false),
+   new Promise(resolve=>setTimeout(()=>resolve(false),700))
+  ]);
+ }catch(e){return Promise.resolve(false);}
+}
+let lastSoundAt=-Infinity;
+function playShortTimerTone(force=false){
+ if(!force&&!state.rest.sound)return false;
+ if(!audioCtx||audioCtx.state!=='running')return false;
+ const now=audioCtx.currentTime;
+ // Avoid overlapping tones on a double tap, not a repeating alarm.
+ if(now-lastSoundAt<0.23)return false;
+ let oscillator=null,gain=null;
+ try{
+  oscillator=audioCtx.createOscillator();gain=audioCtx.createGain();
+  oscillator.type='sine';oscillator.frequency.setValueAtTime(880,now);
+  const start=now+0.005;
+  gain.gain.setValueAtTime(0,start);
+  gain.gain.linearRampToValueAtTime(0.14,start+0.012);
+  gain.gain.linearRampToValueAtTime(0.10,start+0.075);
+  gain.gain.exponentialRampToValueAtTime(0.0001,start+0.195);
+  gain.gain.setValueAtTime(0,start+0.20);
+  oscillator.connect(gain);gain.connect(audioCtx.destination);
+  oscillator.onended=()=>{oscillator.disconnect();gain.disconnect();};
+  oscillator.start(start);oscillator.stop(start+0.205);lastSoundAt=now;
+  return true;
+ }catch(e){
+  try{oscillator?.disconnect();gain?.disconnect();}catch(ignore){}
+  return false;
+ }
+}
+function renderSoundSettings(){
+ const checkbox=$('timerSoundEnabled'),status=$('timerSoundStatus');
+ if(checkbox)checkbox.checked=state.rest.sound;
+ if(status)status.textContent=state.rest.sound?'Включён. Настройка сохраняется автоматически.':'Выключен. Кнопка ниже позволяет разово прослушать сигнал.';
+}
+function setTimerSoundEnabled(enabled){
+ if(!commit(()=>{state.rest.sound=!!enabled;state.rest.soundVersion=1;})){renderSoundSettings();return;}
+ if(enabled)armAudio();renderSoundSettings();
+ toast(enabled?'Короткий сигнал включён.':'Звук таймера выключен.');
+}
+async function testTimerSound(){
+ const button=$('testTimerSound');if(button)button.disabled=true;
+ const ready=await armAudio(true);
+ const played=ready&&playShortTimerTone(true);
+ const message=played?'Сигнал проверен. Если его не слышно, проверьте громкость устройства и звук вкладки.':'Браузер не разрешил звук. Нажмите «Проверить звук» ещё раз и проверьте настройки вкладки.';
+ if($('timerSoundStatus'))$('timerSoundStatus').textContent=message;
+ toast(message);
+ setTimeout(()=>{if(button)button.disabled=false;},250);
+}
+function timerSound(){
+ // If the browser has suspended audio, do not enqueue a late surprise beep.
+ playShortTimerTone();
+ if(state.rest.vibration&&navigator.vibrate){try{navigator.vibrate([100,50,100]);}catch(e){}}
+}
 function timerTick(){if(state.timer.active&&state.timer.endAt!==null&&remaining()===0){state.timer={active:false,endAt:null,remaining:0,sessionId:null};persist();timerSound();toast('Отдых окончен. Таймер запустится после следующего подхода.');}drawTimer();}
-function renderSettings(){$('editorSummary').textContent='Дни, порядок, подходы · '+state.programVersions.length+' версий расписания';$('profileSummary').textContent=state.profile.confirmed?'Профиль подтверждён':'Заполнить и подтвердить профиль';$('basesSummary').textContent=`${ALL_EXERCISES.filter(e=>state.exerciseSettings[e.id].base!=null||state.exerciseSettings[e.id].mode!=='weighted').length} из ${ALL_EXERCISES.length} настроек нагрузки · индивидуальные прибавки`;$('programSummary').textContent=`Начало ${dateLabel(state.startDate)} · неделя ${weekIndex()+1}`;$('backupSummary').textContent=state.backup.lastExportAt?'Копия создана '+new Date(state.backup.lastExportAt).toLocaleString('ru-RU'):'Создать или восстановить копию';}
+function renderSettings(){renderSoundSettings();$('editorSummary').textContent='Дни, порядок, подходы · '+state.programVersions.length+' версий расписания';$('profileSummary').textContent=state.profile.confirmed?'Профиль подтверждён':'Заполнить и подтвердить профиль';$('basesSummary').textContent=`${ALL_EXERCISES.filter(e=>!e.unresolved&&(state.exerciseSettings[e.id].base!=null||state.exerciseSettings[e.id].mode!=='weighted')).length} из ${ALL_EXERCISES.filter(e=>!e.unresolved).length} настроек нагрузки · индивидуальные прибавки`;$('programSummary').textContent=`Начало ${dateLabel(state.startDate)} · неделя ${weekIndex()+1}`;$('backupSummary').textContent=state.backup.lastExportAt?'Копия создана '+new Date(state.backup.lastExportAt).toLocaleString('ru-RU'):'Создать или восстановить копию';}
 function markDirty(){settingsDirty=true;}
 function renderProfile(){for(const [id,key] of [['heightInput','height'],['profileWeight','weight'],['goalInput','goal']])$(id).value=state.profile[key]==null?'':fmt(state.profile[key]);$('profileStatus').textContent=state.profile.confirmed?'Ваш профиль подтверждён.':'Укажите свои данные. В этой версии нет заранее заполненных роста и веса.';}
 function saveProfile(){const h=profileNumber($('heightInput').value,50,260),w=profileNumber($('profileWeight').value,20,400),g=profileNumber($('goalInput').value,20,400);if(h==null||w==null||g==null){$('profileError').textContent='Укажите рост 50–260 см, текущий и целевой вес 20–400 кг.';return;}
  if(!commit(()=>{const changed=state.profile.weight!==w;state.profile={height:h,weight:w,goal:g,confirmed:true,onboardingSeen:true};if(changed||!state.weights.length){state.weights=state.weights.filter(x=>x.date!==localISO());state.weights.push({date:localISO(),label:localISO(),v:w});}}))return;settingsDirty=false;$('profileError').textContent='';go('settings');toast('Профиль подтверждён и сохранён.');}
 function renderBases(){
- const groups=[...new Set(ALL_EXERCISES.map(e=>e.group))];
- $('baseGroups').innerHTML=groups.map((group,i)=>`<details class="base-group" ${i===0?'open':''} data-group="${esc(group)}"><summary>${group}<span>${ALL_EXERCISES.filter(e=>e.group===group).length}</span></summary><div class="group-content">${ALL_EXERCISES.filter(e=>e.group===group).map(e=>{
+ const groups=[...new Set(ALL_EXERCISES.filter(e=>!e.unresolved).map(e=>e.group))];
+ $('baseGroups').innerHTML=groups.map((group,i)=>`<details class="base-group" ${i===0?'open':''} data-group="${esc(group)}"><summary>${group}<span>${ALL_EXERCISES.filter(e=>!e.unresolved&&e.group===group).length}</span></summary><div class="group-content">${ALL_EXERCISES.filter(e=>!e.unresolved&&e.group===group).map(e=>{
  const c=state.exerciseSettings[e.id],abs=e.kind==='abs';
- return `<article class="base-card base-entry" data-id="${e.id}"><h3>${esc(e.name)}${e.alternative?' <small class="muted">· замена</small>':''}</h3>${abs?`<label class="field-label" for="mode_${e.id}">Что увеличивать каждую неделю</label><select class="input" id="mode_${e.id}" onchange="baseEdited('${e.id}')"><option value="reps" ${c.mode==='reps'?'selected':''}>Количество повторений</option><option value="weighted" ${c.mode==='weighted'?'selected':''}>Дополнительный вес, кг</option><option value="bodyweight" ${c.mode==='bodyweight'?'selected':''}>Без автоприбавки</option></select><p class="mode-hint">Вес — только дополнительное отягощение, не масса тела. Выберите один способ прибавки.</p>`:`<label class="field-label" for="equipment_${e.id}">Как считать вес</label><select id="equipment_${e.id}" class="input" onchange="baseEdited('${e.id}')">${Object.entries(EQUIPMENT).map(([k,v])=>`<option value="${k}" ${(c.mode==='bodyweight'?'bodyweight':c.equipment)===k?'selected':''}>${v}</option>`).join('')}</select>`}
- <div id="loadFields_${e.id}" class="form-row spaced"><label for="base_${e.id}">${abs?'База доп. веса, кг':'База, кг'}<input id="base_${e.id}" class="input" type="text" inputmode="decimal" placeholder="Не задана" value="${c.base==null?'':fmt(c.base)}" oninput="baseEdited('${e.id}')"></label><label for="step_${e.id}">Прибавка / нед., кг<input id="step_${e.id}" class="input" type="text" inputmode="decimal" list="weightSteps" value="${fmt(c.step)}" oninput="baseEdited('${e.id}')"></label></div>
- ${abs?`<div id="repFields_${e.id}" class="form-row spaced"><label for="baseReps_${e.id}">База повторений<input id="baseReps_${e.id}" class="input" type="text" inputmode="numeric" value="${c.baseReps}" oninput="baseEdited('${e.id}')"></label><label for="repStep_${e.id}">Прибавка / нед., повт.<input id="repStep_${e.id}" class="input" type="text" inputmode="numeric" value="${c.repStep}" oninput="baseEdited('${e.id}')"></label></div>`:''}
+ return `<article class="base-card base-entry" data-id="${e.id}"><h3>${esc(e.name)}${e.alternative?' <small class="muted">· замена</small>':''}</h3>${abs?`<label class="field-label" for="mode_${e.id}">Что увеличивать каждую неделю</label><select class="input" id="mode_${e.id}" onchange="baseEdited('${e.id}')"><option value="reps" ${c.mode==='reps'?'selected':''}>${e.unit==='seconds'?'Длительность удержания, сек':'Количество повторений'}</option><option value="weighted" ${c.mode==='weighted'?'selected':''}>Дополнительный вес, кг</option><option value="bodyweight" ${c.mode==='bodyweight'?'selected':''}>Без автоприбавки</option></select><p class="mode-hint">Вес — только дополнительное отягощение, не масса тела. Выберите один способ прибавки.</p>`:`<label class="field-label" for="equipment_${e.id}">Как считать вес</label><select id="equipment_${e.id}" class="input" onchange="baseEdited('${e.id}')">${Object.entries(EQUIPMENT).map(([k,v])=>`<option value="${k}" ${(c.mode==='bodyweight'?'bodyweight':c.equipment)===k?'selected':''}>${v}</option>`).join('')}</select>`}
+ <div id="loadFields_${e.id}" class="form-row spaced"><label for="base_${e.id}">${abs?'База доп. веса, кг':'База, кг'}<input id="base_${e.id}" class="input" type="text" inputmode="decimal" placeholder="Не задана" value="${c.base==null?'':fmt(c.base)}" oninput="baseEdited('${e.id}')"></label><label for="step_${e.id}">Прибавка / нед., кг<input id="step_${e.id}" class="input" type="text" inputmode="decimal" list="weightSteps" value="${c.step==null?'':fmt(c.step)}" placeholder="Не задана" oninput="baseEdited('${e.id}')"></label></div>
+ ${abs?`<div id="repFields_${e.id}" class="form-row spaced"><label for="baseReps_${e.id}">База повторений<input id="baseReps_${e.id}" class="input" type="text" inputmode="numeric" value="${c.baseReps??''}" placeholder="Не задана" oninput="baseEdited('${e.id}')"></label><label for="repStep_${e.id}">Прибавка / нед., повт.<input id="repStep_${e.id}" class="input" type="text" inputmode="numeric" value="${c.repStep??''}" placeholder="Не задана" oninput="baseEdited('${e.id}')"></label></div>`:''}
  <div class="base-preview" id="basePreview_${e.id}"></div></article>`;
  }).join('')}</div></details>`).join('');
- for(const e of ALL_EXERCISES){previewBase(e.id);if(e.id==='dips'){$('equipment_dips').value='bodyweight';$('equipment_dips').disabled=true;$('loadFields_dips').hidden=true;}}$('baseSavedNote').textContent='';
+ for(const e of ALL_EXERCISES.filter(x=>!x.unresolved)){previewBase(e.id);if(e.unit==='seconds'){const b=$('baseReps_'+e.id)?.parentElement,r=$('repStep_'+e.id)?.parentElement;if(b?.firstChild)b.firstChild.textContent='База удержания, сек';if(r?.firstChild)r.firstChild.textContent='Прибавка / нед., сек';}if(e.id==='dips'){$('equipment_dips').value='bodyweight';$('equipment_dips').disabled=true;$('loadFields_dips').hidden=true;}}$('baseSavedNote').textContent='';
 }
 function previewBase(id){
  const abs=REGISTRY[id].kind==='abs',mode=abs?$('mode_'+id).value:$('equipment_'+id).value==='bodyweight'?'bodyweight':'weighted';
@@ -303,12 +422,12 @@ function previewBase(id){
 }
 function baseEdited(id){markDirty();previewBase(id);}
 function saveBases(){
- const values={};
- for(const e of ALL_EXERCISES){
+ const values={...state.exerciseSettings};
+ for(const e of ALL_EXERCISES.filter(x=>!x.unresolved)){
   const abs=e.kind==='abs',old=state.exerciseSettings[e.id],mode=abs?$('mode_'+e.id).value:$('equipment_'+e.id).value==='bodyweight'?'bodyweight':'weighted';
-  const baseText=$('base_'+e.id).value,base=baseText.trim()===''?null:num(baseText),step=num($('step_'+e.id).value),restText='',rest=null;
+  const baseText=$('base_'+e.id).value,base=baseText.trim()===''?null:num(baseText),step=$('step_'+e.id).value.trim()===''?null:num($('step_'+e.id).value),restText='',rest=null;
   const baseReps=abs?num($('baseReps_'+e.id).value):null,repStep=abs?num($('repStep_'+e.id).value):null;
-  const invalid=mode==='weighted'&&((base!==null&&(!Number.isFinite(base)||base<0||base>5000))||!Number.isFinite(step)||step<=0||step>100)||rest!==null&&(!Number.isInteger(rest)||rest<5||rest>900)||mode==='reps'&&(!Number.isInteger(baseReps)||baseReps<1||baseReps>500||!Number.isInteger(repStep)||repStep<0||repStep>100);
+  const invalid=mode==='weighted'&&((base!==null&&(!Number.isFinite(base)||base<0||base>5000))||(step!==null&&(!Number.isFinite(step)||step<=0||step>100)))||rest!==null&&(!Number.isInteger(rest)||rest<5||rest>900)||mode==='reps'&&(!Number.isInteger(baseReps)||baseReps<1||baseReps>500||!Number.isInteger(repStep)||repStep<0||repStep>100);
   if(invalid){$('baseSavedNote').textContent='Проверьте базу, прибавку или отдых: '+e.name;const d=$('base_'+e.id).closest('details');d.open=true;d.scrollIntoView({block:'start',behavior:'smooth'});return;}
   values[e.id]={...old,base:mode==='weighted'?base:old.base,mode,step:mode==='weighted'?step:old.step,equipment:abs?(mode==='weighted'?'extra':'bodyweight'):mode==='bodyweight'?'bodyweight':$('equipment_'+e.id).value,rest};
   if(abs){values[e.id].baseReps=mode==='reps'?baseReps:old.baseReps;values[e.id].repStep=mode==='reps'?repStep:old.repStep;}
@@ -331,7 +450,7 @@ function downloadJSON(data,name){
 function exportData(){
  const now=new Date().toISOString(),snapshot=copy(state);snapshot.backup.lastExportAt=now;
  try{
-  const mode=downloadJSON({app:'Virkan Gym',schemaVersion:VERSION,version:'2.0',exportedAt:now,state:snapshot},'Virkan_Gym_backup_'+localISO()+'_'+Date.now()+'.json');
+  const mode=downloadJSON({app:'Virkan Gym',schemaVersion:VERSION,version:APP_VERSION,exportedAt:now,state:snapshot},'Virkan_Gym_backup_'+localISO()+'_'+Date.now()+'.json');
   if(mode==='native'){toast('Выберите папку и подтвердите сохранение JSON.');}
   else{commit(()=>{state.backup.lastExportAt=now;});if(page==='backup')renderBackup();toast('Загрузка JSON начата. Проверьте сохранённый файл.');}
  }catch(e){toast('Не удалось создать файл: '+e.message);}
@@ -341,7 +460,7 @@ window.virkanNativeExportFinished=function(ok){
  else{toast('JSON не сохранён. Данные приложения не изменены.');}
 };
 async function importData(event){const f=event.target.files[0];if(!f)return;try{if(f.size>5*1024*1024)throw Error('Размер копии больше 5 МБ.');const raw=JSON.parse(await f.text());if(raw.app&&raw.app!=='Virkan Gym')throw Error('Файл другого приложения.');const data=raw.state||raw,v=normalize(data);pendingImport={value:v,source:raw,filename:f.name};const old=Number(data.schemaVersion)!==VERSION;
- showDialog('Предварительный просмотр копии',`<p class="filename">${esc(f.name)}</p><div class="notice"><b>В копии:</b><br>${backupText(counts(v))}</div><p class="note">Создана: ${raw.exportedAt&&Number.isFinite(Date.parse(raw.exportedAt))?new Date(raw.exportedAt).toLocaleString('ru-RU'):'дата не указана'}</p><p class="note">Сейчас в приложении: ${backupText(counts(state))}.</p>${old?'<p class="notice">Копия прежней версии: результаты и индивидуальные веса сохраняются. Для пресса добавлена прибавка повторений по умолчанию; проверьте её. Сохранённые ранее подходы не пересчитываются.</p>':''}<p>Восстановление <b>заменит</b> текущие данные. Перед заменой сохранится локальная копия текущего состояния.</p><button class="btn secondary full" onclick="exportData()">Сначала скачать текущие данные</button><button class="big-action" onclick="confirmImport()">ВОССТАНОВИТЬ ИЗ ЭТОЙ КОПИИ</button>`);
+ showDialog('Предварительный просмотр копии',`<p class="filename">${esc(f.name)}</p><div class="notice"><b>В копии:</b><br>${backupText(counts(v))}</div><p class="note">Создана: ${raw.exportedAt&&Number.isFinite(Date.parse(raw.exportedAt))?new Date(raw.exportedAt).toLocaleString('ru-RU'):'дата не указана'}</p><p class="note">Сейчас в приложении: ${backupText(counts(state))}.</p>${old?'<p class="notice">Копия прежней версии: результаты и индивидуальные веса сохраняются. Незаданные прибавки пресса не назначаются автоматически. Сохранённые ранее подходы не пересчитываются.</p>':''}<p>Восстановление <b>заменит</b> текущие данные. Перед заменой сохранится локальная копия текущего состояния.</p><button class="btn secondary full" onclick="exportData()">Сначала скачать текущие данные</button><button class="big-action" onclick="confirmImport()">ВОССТАНОВИТЬ ИЗ ЭТОЙ КОПИИ</button>`);
  }catch(e){toast('Импорт не выполнен: '+e.message);}finally{event.target.value='';}}
 function confirmImport(){if(!pendingImport)return;const prior=copy(state),next=pendingImport.value;try{localStorage.setItem(SNAPSHOT_KEY,JSON.stringify({app:'Virkan Gym',schemaVersion:VERSION,state:prior}));state=next;if(!persist()){state=prior;throw Error('Браузер не сохранил замену.');}selectedSession=null;activeTab=null;closeDialog();settingsDirty=false;go('backup');toast('Копия восстановлена. Старые данные доступны кнопкой возврата.');if(!state.profile.confirmed)promptProfile();}catch(e){state=prior;toast(e.message);}}
 function restoreSnapshot(){try{const raw=localStorage.getItem(SNAPSHOT_KEY);if(!raw)return;if(!confirm('Вернуть данные до последнего импорта или сброса? Текущие будут заменены.'))return;const v=normalize(JSON.parse(raw).state),old=state;state=v;if(!persist()){state=old;return;}selectedSession=null;renderPage();toast('Данные до замены восстановлены.');}catch(e){toast('Не удалось восстановить локальную копию: '+e.message);}}
@@ -358,7 +477,8 @@ window.virkanHandleBack=function(){
  go(['atlas','bases','profileSettings','backup','programSettings','timerSettings','programEditor'].includes(page)?'settings':'home');
  return true;
 };
-window.virkanOnResume=function(){checkDay();timerTick();};
+window.virkanOnResume=function(){checkDay();timerTick();scheduleNativeSync();if(page==='notifications')renderNotifications();};
+window.virkanOpenDate=function(date){if(validDate(date)){if(settingsDirty){toast('Сначала сохраните открытую форму.');return;}if($('dialog').open)closeDialog();openWorkout(date);}};
 
 // Permanent program: date-based snapshots. Edits never overwrite recorded results.
 let editorDraft=null,editorDow=1,editorCycle=0;
@@ -369,14 +489,14 @@ function loadEditorForDate(){const d=$('editorFrom').value;if(!validDate(d)){toa
 function selectEditorDay(d){editorDow=d;renderEditorDay();}
 function editorTitle(v){editorDraft.days[editorDow].title=v;markDirty();}
 function editorInteger(field,v,index=null){const n=num(v);if(index===null)editorDraft.days[editorDow][field]=n;else editorDraft.days[editorDow].items[index][field]=n;markDirty();}
-function editorEnabled(on){const p=editorDraft.days[editorDow];if(on){p.tabs=['gym'];if(p.title==='Отдых')p.title=PLAN[editorDow].tabs.length?PLAN[editorDow].title:'Тренировка';}else p.tabs=[];markDirty();renderEditorDay();}
-function editorActivity(kind,on){const p=editorDraft.days[editorDow];p.tabs=p.tabs.filter(x=>x!==kind);if(on)p.tabs.push(kind);if(!p.tabs.length)p.tabs=['gym'];markDirty();}
+function editorEnabled(on){const p=editorDraft.days[editorDow];if(on){p.tabs=['gym'];if(p.title==='Отдых')p.title=PLAN[editorDow].tabs.length?PLAN[editorDow].title:'Тренировка';}else {p.tabs=[];p.docIssues=[];}markDirty();renderEditorDay();}
+function editorActivity(kind,on){const p=editorDraft.days[editorDow];if(kind==='pool')p.docIssues=(p.docIssues||[]).filter(k=>k!==({1:'mon_pool',4:'thu_pool'})[editorDow]);p.tabs=p.tabs.filter(x=>x!==kind);if(on)p.tabs.push(kind);if(!p.tabs.length)p.tabs=['gym'];markDirty();}
 function selectExerciseOptions(chosen){return [...new Set(CATALOG.map(e=>e.group))].map(g=>`<optgroup label="${g}">${CATALOG.filter(e=>e.group===g).map(e=>`<option value="${e.id}" ${e.id===chosen?'selected':''}>${esc(e.name)}</option>`).join('')}</optgroup>`).join('');}
-function editorExercise(i,id){const p=editorDraft.days[editorDow];if(p.items.some((x,k)=>k!==i&&x[0]===id)){toast('Это упражнение уже есть в данном дне.');renderEditorDay();return;}p.items[i][0]=id;markDirty();}
-function addEditorExercise(){const p=editorDraft.days[editorDow],id=$('editorAddSelect').value;if(!id||p.items.some(x=>x[0]===id)){toast('Выберите упражнение, которого ещё нет в дне.');return;}p.items.push([id,3,10]);markDirty();renderEditorDay();}
+function editorExercise(i,id){const p=editorDraft.days[editorDow];if(p.items.some((x,k)=>k!==i&&x[0]===id)){toast('Это упражнение уже есть в данном дне.');renderEditorDay();return;}if(REGISTRY[p.items[i][0]]?.unresolved)p.items[i][2]=NaN;p.items[i][0]=id;markDirty();renderEditorDay();}
+function addEditorExercise(){const p=editorDraft.days[editorDow],id=$('editorAddSelect').value;if(!id||p.items.some(x=>x[0]===id)){toast('Выберите упражнение, которого ещё нет в дне.');return;}p.items.push([id,3,10]);if(editorDow===2)p.docIssues=[];markDirty();renderEditorDay();}
 function shiftEditorItem(i,delta){const a=editorDraft.days[editorDow].items,j=i+delta;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];markDirty();renderEditorDay();}
 function removeEditorItem(i){editorDraft.days[editorDow].items.splice(i,1);markDirty();renderEditorDay();}
-function absEditorBlock(start){const p=editorDraft.days[editorDow],id=p[start?'absStartExercise':'absEndExercise']||(start?'abs_start':'abs_end'),cfg=state.exerciseSettings[id],setKey=start?'absStartSets':'absEndSets',repKey=start?'absStartReps':'absEndReps',rp=cfg.mode==='reps';return p.includeAbs===false?'':`<div class="abs-anchor"><span class="eyebrow">${start?'ПЕРВОЕ УПРАЖНЕНИЕ':'ПОСЛЕДНЕЕ УПРАЖНЕНИЕ'}</span><select class="input" aria-label="Упражнение на пресс" onchange="setEditorAbs('${start?'absStartExercise':'absEndExercise'}',this.value)">${ABS.filter(e=>!e.alternative||e.id===id).map(e=>`<option value="${e.id}" ${e.id===id?'selected':''}>${esc(e.name)}</option>`).join('')}</select><div class="form-row spaced"><label>Подходов<input id="editor_${setKey}" class="input" type="number" min="1" max="20" value="${Number.isFinite(p[setKey])?p[setKey]:''}" oninput="editorInteger('${setKey}',this.value)"></label><label>${rp?'Повт. первой недели':'Повторений'}<input id="editor_${repKey}" class="input" type="number" min="1" max="500" value="${rp?cfg.baseReps:Number.isFinite(p[repKey])?p[repKey]:''}" ${rp?'disabled':''} oninput="editorInteger('${repKey}',this.value)"></label></div>${rp?`<p class="note">База ${cfg.baseReps} + ${cfg.repStep} повт./нед. Управление — в базовых весах, группа «Пресс».</p>`:''}</div>`;}
+function absEditorBlock(start){const p=editorDraft.days[editorDow],id=p[start?'absStartExercise':'absEndExercise']||(start?'abs_start':'abs_end'),cfg=state.exerciseSettings[id],setKey=start?'absStartSets':'absEndSets',repKey=start?'absStartReps':'absEndReps',rp=cfg.mode==='reps';return p.includeAbs===false?'':`<div class="abs-anchor"><span class="eyebrow">${start?'ПЕРВОЕ УПРАЖНЕНИЕ':'ПОСЛЕДНЕЕ УПРАЖНЕНИЕ'}</span><select class="input" aria-label="Упражнение на пресс" onchange="setEditorAbs('${start?'absStartExercise':'absEndExercise'}',this.value)">${ABS.filter(e=>!e.alternative||e.id===id).map(e=>`<option value="${e.id}" ${e.id===id?'selected':''}>${esc(e.name)}</option>`).join('')}</select><div class="form-row spaced"><label>Подходов<input id="editor_${setKey}" class="input" type="number" min="1" max="20" value="${Number.isFinite(p[setKey])?p[setKey]:''}" oninput="editorInteger('${setKey}',this.value)"></label><label>${REGISTRY[id]?.unit==='seconds'?'Секунд в подходе':rp?'Повт. первой недели':'Повторений'}<input id="editor_${repKey}" class="input" type="number" min="1" max="500" value="${rp?cfg.baseReps:Number.isFinite(p[repKey])?p[repKey]:''}" ${rp?'disabled':''} oninput="editorInteger('${repKey}',this.value)"></label></div>${rp?`<p class="note">База ${cfg.baseReps} + ${cfg.repStep} повт./нед. Управление — в базовых весах, группа «Пресс».</p>`:''}</div>`;}
 function renderEditorDay(){
  $('editorCycles').innerHTML=[0,1,2].map(c=>`<button class="btn ${c===editorCycle?'':'secondary'}" onclick="selectEditorCycle(${c})">Неделя ${c+1}</button>`).join('');
  const p=editorDraft.days[editorDow],on=p.tabs.length>0;
@@ -392,17 +512,18 @@ function savePermanentProgram(){try{
  const version={id:'p_'+Date.now(),effectiveFrom:from,savedAt:new Date().toISOString(),anchorDate:from,cycles,days:cycles[0]};
  if(commit(()=>{state.programVersions=state.programVersions.filter(v=>v.effectiveFrom!==from);state.programVersions.push(version);state.programVersions.sort((a,b)=>a.effectiveFrom.localeCompare(b.effectiveFrom));for(const s of previews){delete state.sessions[s.id];if(selectedSession===s.id)selectedSession=null;}})){settingsDirty=false;$('editorSaved').textContent='Три недели сохранены. Первая начинается '+dateLabel(from,true)+'.';toast('Цикл сохранён.');}
  }catch(e){$('editorError').textContent=e.message;}}
-function resetEditorDraft(){if(!confirm('Загрузить новый трёхнедельный план в черновик? История не изменится.'))return;editorCycle=0;editorDraft.cycles=v20DefaultCycles();editorDraft.days=editorDraft.cycles[0];markDirty();renderEditorDay();$('editorSaved').textContent='Новый план в черновике. Выберите дату и сохраните.';}
+function resetEditorDraft(){if(!confirm('Загрузить новый трёхнедельный план в черновик? История не изменится.'))return;editorCycle=0;editorDraft.cycles=documentCycles(state.documentSelections||{});editorDraft.days=editorDraft.cycles[0];markDirty();renderEditorDay();$('editorSaved').textContent='Новый план в черновике. Выберите дату и сохраните.';}
 function selectEditorCycle(c){editorCycle=c;editorDraft.days=editorDraft.cycles[c];renderEditorDay();}
-function setEditorAbs(key,id){if(!ABS.some(e=>e.id===id))return;editorDraft.days[editorDow][key]=id;markDirty();renderEditorDay();}
-function setEditorAbsEnabled(on){editorDraft.days[editorDow].includeAbs=on;markDirty();renderEditorDay();}
+function setEditorAbs(key,id){if(!ABS.some(e=>e.id===id))return;const p=editorDraft.days[editorDow];if(REGISTRY[p[key]]?.unresolved)p[key.replace('Exercise','Reps')]=NaN;p[key]=id;markDirty();renderEditorDay();}
+function setEditorAbsEnabled(on){const p=editorDraft.days[editorDow];if(editorDow===4)p.docIssues=(p.docIssues||[]).filter(k=>k!=='thu_abs');editorDraft.days[editorDow].includeAbs=on;markDirty();renderEditorDay();}
 function openGuide(id){const m=REGISTRY[id]||{name:V20_CARDIO[id]||'Упражнение',group:'Кардио'},p=globalThis.VIRKAN_CARDS?.[id];if(!p){showDialog(m.name,'<p>Иллюстрация пока не добавлена.</p>');return;}
  const cue=id==='dips'?'Только собственный вес • Без дополнительного груза':V20_CUES[m.group]||'Ровный контролируемый темп';
  showDialog(m.name,`<div class="guide-photos">${p.files.map((f,i)=>`<figure><img src="${esc(f)}" alt="${esc(m.name)} — положение ${i+1}"><figcaption>Положение ${i+1}</figcaption></figure>`).join('')}</div><p class="guide-cue">${esc(cue)}</p><p class="note">Фото показывают положения упражнения, а не рекомендуемый вес. Вариант тренажёра может отличаться. Технику и подходящую нагрузку проверьте с тренером.</p><details><summary>Источник изображения</summary><p class="note">Free Exercise DB · public-domain dataset / Unlicense. ${esc(p.sourceName)}</p></details>`);
 }
-function renderAtlas(){const q=String($('atlasSearch').value||'').toLocaleLowerCase('ru-RU'),items=[...ALL_EXERCISES,...Object.entries(V20_CARDIO).map(([id,name])=>({id,name,group:'Кардио'}))];$('atlasList').innerHTML=items.filter(e=>(e.name+' '+e.group).toLocaleLowerCase('ru-RU').includes(q)).map(e=>`<button class="atlas-card" onclick="openGuide('${e.id}')">${globalThis.VIRKAN_CARDS?.[e.id]?`<img loading="lazy" src="${esc(globalThis.VIRKAN_CARDS[e.id].files[0])}" alt="">`:''}<span><b>${esc(e.name)}</b><small>${esc(e.group)}</small></span></button>`).join('');}
+function renderAtlas(){const q=String($('atlasSearch').value||'').toLocaleLowerCase('ru-RU'),items=[...ALL_EXERCISES.filter(e=>!e.unresolved),...Object.entries(V20_CARDIO).map(([id,name])=>({id,name,group:'Кардио'}))];$('atlasList').innerHTML=items.filter(e=>(e.name+' '+e.group).toLocaleLowerCase('ru-RU').includes(q)).map(e=>`<button class="atlas-card" onclick="openGuide('${e.id}')">${globalThis.VIRKAN_CARDS?.[e.id]?`<img loading="lazy" src="${esc(globalThis.VIRKAN_CARDS[e.id].files[0])}" alt="">`:''}<span><b>${esc(e.name)}</b><small>${esc(e.group)}</small></span></button>`).join('');}
 function checkDay(){if(lastDay!==localISO()){lastDay=localISO();if(!settingsDirty)renderPage();}}
 if (!globalThis.VIRKAN_TEST_MODE) {
+scheduleNativeSync();
 window.addEventListener('beforeunload',e=>{if(settingsDirty){e.preventDefault();e.returnValue='';}});
 function syncNavOffset(){const h=document.querySelector('.bottom').getBoundingClientRect().height;document.documentElement.style.setProperty('--nav-height',Math.ceil(h+8)+'px');}
 window.addEventListener('resize',syncNavOffset);
